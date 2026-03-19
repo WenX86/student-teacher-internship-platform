@@ -1,0 +1,579 @@
+{
+  "colleges": [
+    {
+      "id": "college-001",
+      "schoolName": "示范大学",
+      "name": "教育学院",
+      "contactName": "王主任",
+      "contactPhone": "13800000001",
+      "description": "一期演示学院"
+    }
+  ],
+  "users": [
+    {
+      "id": "user-super-001",
+      "account": "root",
+      "name": "平台管理员",
+      "role": "SUPER_ADMIN",
+      "password": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "mustChangePassword": false,
+      "status": "ACTIVE",
+      "collegeId": null,
+      "lastLoginAt": null
+    },
+    {
+      "id": "user-college-001",
+      "account": "college01",
+      "name": "教育学院管理员",
+      "role": "COLLEGE_ADMIN",
+      "password": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "mustChangePassword": false,
+      "status": "ACTIVE",
+      "collegeId": "college-001",
+      "lastLoginAt": "2026-03-18T14:12:02.798Z"
+    },
+    {
+      "id": "user-teacher-001",
+      "account": "T1001",
+      "name": "李老师",
+      "role": "TEACHER",
+      "password": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "mustChangePassword": false,
+      "status": "ACTIVE",
+      "collegeId": "college-001",
+      "lastLoginAt": null
+    },
+    {
+      "id": "user-teacher-002",
+      "account": "T1002",
+      "name": "周老师",
+      "role": "TEACHER",
+      "password": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "mustChangePassword": false,
+      "status": "ACTIVE",
+      "collegeId": "college-001",
+      "lastLoginAt": "2026-03-18T14:12:02.795Z"
+    },
+    {
+      "id": "user-student-001",
+      "account": "20230001",
+      "name": "张三",
+      "role": "STUDENT",
+      "password": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "mustChangePassword": false,
+      "status": "ACTIVE",
+      "collegeId": "college-001",
+      "lastLoginAt": null
+    },
+    {
+      "id": "user-student-002",
+      "account": "20230002",
+      "name": "李四",
+      "role": "STUDENT",
+      "password": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "mustChangePassword": false,
+      "status": "ACTIVE",
+      "collegeId": "college-001",
+      "lastLoginAt": "2026-03-18T14:12:39.496Z"
+    }
+  ],
+  "teachers": [
+    {
+      "id": "teacher-001",
+      "userId": "user-teacher-001",
+      "name": "李老师",
+      "employeeNo": "T1001",
+      "collegeId": "college-001",
+      "department": "语文教研室",
+      "phone": "13900000001",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "teacher-002",
+      "userId": "user-teacher-002",
+      "name": "周老师",
+      "employeeNo": "T1002",
+      "collegeId": "college-001",
+      "department": "班主任教研室",
+      "phone": "13900000002",
+      "status": "ACTIVE"
+    }
+  ],
+  "students": [
+    {
+      "id": "student-001",
+      "userId": "user-student-001",
+      "name": "张三",
+      "studentNo": "20230001",
+      "collegeId": "college-001",
+      "major": "汉语言文学",
+      "className": "2023级1班",
+      "phone": "13700000001",
+      "internshipType": "TEACHING",
+      "internshipStatus": "实习中",
+      "profileCompleted": true
+    },
+    {
+      "id": "student-002",
+      "userId": "user-student-002",
+      "name": "李四",
+      "studentNo": "20230002",
+      "collegeId": "college-001",
+      "major": "教育学",
+      "className": "2023级2班",
+      "phone": "13700000002",
+      "internshipType": "HEAD_TEACHER",
+      "internshipStatus": "实习中",
+      "profileCompleted": true
+    }
+  ],
+  "organizations": [
+    {
+      "id": "org-001",
+      "collegeId": "college-001",
+      "name": "示范附属中学",
+      "address": "武汉市洪山区书香路1号",
+      "contactName": "刘主任",
+      "contactPhone": "13600000001",
+      "nature": "公办中学",
+      "cooperationStatus": "优质合作"
+    },
+    {
+      "id": "org-002",
+      "collegeId": "college-001",
+      "name": "明德实验小学",
+      "address": "武汉市江夏区知行路12号",
+      "contactName": "陈主任",
+      "contactPhone": "13600000002",
+      "nature": "公办小学",
+      "cooperationStatus": "合作中"
+    }
+  ],
+  "mentorApplications": [
+    {
+      "id": "mentor-app-001",
+      "studentId": "student-001",
+      "teacherId": "teacher-001",
+      "status": "已生效",
+      "studentRemark": "申请李老师担任指导教师",
+      "teacherRemark": "同意接收",
+      "collegeRemark": "学院复核通过",
+      "createdAt": "2026-03-01T09:00:00.000Z",
+      "teacherReviewedAt": "2026-03-02T09:00:00.000Z",
+      "collegeReviewedAt": "2026-03-03T09:00:00.000Z",
+      "effectiveAt": "2026-03-03T09:00:00.000Z"
+    },
+    {
+      "id": "mentor-app-002",
+      "studentId": "student-002",
+      "teacherId": "teacher-002",
+      "status": "已生效",
+      "studentRemark": "申请周老师担任指导教师",
+      "teacherRemark": "????",
+      "collegeRemark": "??????",
+      "createdAt": "2026-03-10T09:00:00.000Z",
+      "teacherReviewedAt": "2026-03-18T14:12:02.815Z",
+      "collegeReviewedAt": "2026-03-18T14:12:02.822Z",
+      "effectiveAt": "2026-03-18T14:12:02.822Z"
+    }
+  ],
+  "internshipApplications": [
+    {
+      "id": "internship-app-001",
+      "studentId": "student-001",
+      "organizationId": "org-001",
+      "status": "已通过",
+      "batchName": "2026春季批次",
+      "position": "初中语文",
+      "gradeTarget": "七年级",
+      "startDate": "2026-03-05",
+      "endDate": "2026-06-30",
+      "remark": "已与学校沟通完成",
+      "attachments": [
+        {
+          "id": "file-001",
+          "name": "实习申请表.pdf",
+          "url": "#"
+        }
+      ],
+      "organizationConfirmation": "已确认接收",
+      "organizationFeedback": "欢迎实习，按时到岗",
+      "receivedAt": "2026-03-04",
+      "createdAt": "2026-03-03T08:00:00.000Z",
+      "reviewedAt": "2026-03-04T08:00:00.000Z",
+      "reviewComment": "指导关系已生效，可进入实习"
+    },
+    {
+      "id": "internship-app-002",
+      "studentId": "student-002",
+      "organizationId": "org-002",
+      "status": "已通过",
+      "batchName": "2026春季批次",
+      "position": "班主任助理",
+      "gradeTarget": "小学五年级",
+      "startDate": "2026-03-20",
+      "endDate": "2026-06-30",
+      "remark": "希望从事班主任实习",
+      "attachments": [],
+      "organizationConfirmation": "?????",
+      "organizationFeedback": "????",
+      "receivedAt": "2026-03-18",
+      "createdAt": "2026-03-12T08:00:00.000Z",
+      "reviewedAt": "2026-03-18T14:12:02.827Z",
+      "reviewComment": "???????"
+    }
+  ],
+  "formTemplates": [
+    {
+      "code": "internship-journal",
+      "name": "实习记录",
+      "category": "COMMON",
+      "applicableTypes": [
+        "TEACHING",
+        "HEAD_TEACHER"
+      ]
+    },
+    {
+      "code": "internship-reflection",
+      "name": "实习心得",
+      "category": "COMMON",
+      "applicableTypes": [
+        "TEACHING",
+        "HEAD_TEACHER"
+      ]
+    },
+    {
+      "code": "lecture-record",
+      "name": "听课记录",
+      "category": "TEACHING",
+      "applicableTypes": [
+        "TEACHING"
+      ]
+    },
+    {
+      "code": "teaching-clock-in",
+      "name": "教学实习打卡",
+      "category": "TEACHING",
+      "applicableTypes": [
+        "TEACHING"
+      ]
+    },
+    {
+      "code": "class-duty-record",
+      "name": "值守记录",
+      "category": "HEAD_TEACHER",
+      "applicableTypes": [
+        "HEAD_TEACHER"
+      ]
+    },
+    {
+      "code": "class-meeting-plan",
+      "name": "班会方案",
+      "category": "HEAD_TEACHER",
+      "applicableTypes": [
+        "HEAD_TEACHER"
+      ]
+    }
+  ],
+  "formInstances": [
+    {
+      "id": "form-78556e16",
+      "studentId": "student-002",
+      "templateCode": "class-meeting-plan",
+      "templateName": "班会方案",
+      "category": "HEAD_TEACHER",
+      "status": "已归档",
+      "version": 1,
+      "content": {
+        "summary": "??????????",
+        "title": "??????"
+      },
+      "attachments": [],
+      "teacherComment": "??????",
+      "collegeComment": "??????",
+      "score": 93,
+      "createdAt": "2026-03-18T14:12:02.833Z",
+      "updatedAt": "2026-03-18T14:12:02.842Z",
+      "submittedAt": "2026-03-18T14:12:02.833Z",
+      "teacherReviewedAt": "2026-03-18T14:12:02.838Z",
+      "collegeReviewedAt": "2026-03-18T14:12:02.842Z",
+      "history": []
+    },
+    {
+      "id": "form-001",
+      "studentId": "student-001",
+      "templateCode": "internship-journal",
+      "templateName": "实习记录",
+      "category": "COMMON",
+      "status": "已归档",
+      "version": 1,
+      "content": {
+        "title": "第一周实习记录",
+        "summary": "完成听课、备课与课堂观察。"
+      },
+      "attachments": [],
+      "teacherComment": "记录详实",
+      "collegeComment": "同意归档",
+      "score": 92,
+      "createdAt": "2026-03-06T08:00:00.000Z",
+      "updatedAt": "2026-03-08T08:00:00.000Z",
+      "submittedAt": "2026-03-06T08:00:00.000Z",
+      "teacherReviewedAt": "2026-03-07T08:00:00.000Z",
+      "collegeReviewedAt": "2026-03-08T08:00:00.000Z",
+      "history": []
+    },
+    {
+      "id": "form-002",
+      "studentId": "student-001",
+      "templateCode": "lecture-record",
+      "templateName": "听课记录",
+      "category": "TEACHING",
+      "status": "教师审核中",
+      "version": 1,
+      "content": {
+        "title": "语文示范课听课记录",
+        "summary": "观察课堂导入和提问设计。"
+      },
+      "attachments": [],
+      "teacherComment": "",
+      "collegeComment": "",
+      "score": null,
+      "createdAt": "2026-03-10T08:00:00.000Z",
+      "updatedAt": "2026-03-10T08:00:00.000Z",
+      "submittedAt": "2026-03-10T08:00:00.000Z",
+      "teacherReviewedAt": null,
+      "collegeReviewedAt": null,
+      "history": []
+    },
+    {
+      "id": "form-003",
+      "studentId": "student-002",
+      "templateCode": "class-duty-record",
+      "templateName": "值守记录",
+      "category": "HEAD_TEACHER",
+      "status": "草稿",
+      "version": 1,
+      "content": {
+        "title": "班主任值守记录草稿",
+        "summary": "准备提交。"
+      },
+      "attachments": [],
+      "teacherComment": "",
+      "collegeComment": "",
+      "score": null,
+      "createdAt": "2026-03-15T08:00:00.000Z",
+      "updatedAt": "2026-03-15T08:00:00.000Z",
+      "submittedAt": null,
+      "teacherReviewedAt": null,
+      "collegeReviewedAt": null,
+      "history": []
+    }
+  ],
+  "messages": [
+    {
+      "id": "message-5a510af1",
+      "read": false,
+      "createdAt": "2026-03-18T14:12:02.842Z",
+      "userId": "user-student-002",
+      "type": "审核结果",
+      "title": "班会方案已归档",
+      "content": "??????",
+      "link": "/student/tasks"
+    },
+    {
+      "id": "message-117abf06",
+      "read": false,
+      "createdAt": "2026-03-18T14:12:02.838Z",
+      "userId": "user-college-001",
+      "type": "待办提醒",
+      "title": "李四 的 班会方案 待归档",
+      "content": "教师审核已通过，请完成学院终审。",
+      "link": "/college/archive"
+    },
+    {
+      "id": "message-d97d9267",
+      "read": false,
+      "createdAt": "2026-03-18T14:12:02.838Z",
+      "userId": "user-student-002",
+      "type": "审核结果",
+      "title": "班会方案已通过教师审核",
+      "content": "??????",
+      "link": "/student/tasks"
+    },
+    {
+      "id": "message-cd996f42",
+      "read": false,
+      "createdAt": "2026-03-18T14:12:02.833Z",
+      "userId": "user-teacher-002",
+      "type": "待办提醒",
+      "title": "李四 提交了 班会方案",
+      "content": "请在教师端完成审核。",
+      "link": "/teacher/reviews"
+    },
+    {
+      "id": "message-7f67dcf0",
+      "read": false,
+      "createdAt": "2026-03-18T14:12:02.827Z",
+      "userId": "user-student-002",
+      "type": "审核结果",
+      "title": "实习申请已通过",
+      "content": "???????",
+      "link": "/student/internship-application"
+    },
+    {
+      "id": "message-330557cc",
+      "read": false,
+      "createdAt": "2026-03-18T14:12:02.822Z",
+      "userId": "user-student-002",
+      "type": "审核结果",
+      "title": "指导关系已正式生效",
+      "content": "??????",
+      "link": "/student/mentor-applications"
+    },
+    {
+      "id": "message-f10ca629",
+      "read": false,
+      "createdAt": "2026-03-18T14:12:02.815Z",
+      "userId": "user-college-001",
+      "type": "待办提醒",
+      "title": "李四 的指导关系待学院复核",
+      "content": "教师已确认，请完成复核。",
+      "link": "/college/mentor-relations"
+    },
+    {
+      "id": "message-b1356eed",
+      "read": false,
+      "createdAt": "2026-03-18T14:12:02.815Z",
+      "userId": "user-student-002",
+      "type": "审核结果",
+      "title": "指导申请已获教师确认",
+      "content": "????",
+      "link": "/student/mentor-applications"
+    },
+    {
+      "id": "message-001",
+      "userId": "user-student-001",
+      "type": "待办提醒",
+      "title": "听课记录待教师审核",
+      "content": "你提交的《听课记录》已进入教师审核中。",
+      "link": "/student/forms/teaching",
+      "read": false,
+      "createdAt": "2026-03-10T08:10:00.000Z"
+    },
+    {
+      "id": "message-002",
+      "userId": "user-teacher-001",
+      "type": "审核待办",
+      "title": "张三提交了新的听课记录",
+      "content": "请在规定时间内完成审核。",
+      "link": "/teacher/reviews",
+      "read": false,
+      "createdAt": "2026-03-10T08:10:00.000Z"
+    },
+    {
+      "id": "message-003",
+      "userId": "user-college-001",
+      "type": "待办提醒",
+      "title": "李四的实习申请待审批",
+      "content": "请核验指导关系并登记单位确认结果。",
+      "link": "/college/internship-applications",
+      "read": false,
+      "createdAt": "2026-03-12T08:10:00.000Z"
+    }
+  ],
+  "guidanceRecords": [
+    {
+      "id": "guide-001",
+      "teacherId": "teacher-001",
+      "studentId": "student-001",
+      "guidanceAt": "2026-03-09T13:00:00.000Z",
+      "mode": "线上",
+      "problem": "导入环节节奏偏慢",
+      "advice": "增加情境提问和板书提示",
+      "followUp": "下次试讲继续跟进"
+    }
+  ],
+  "evaluations": [
+    {
+      "id": "eval-001",
+      "teacherId": "teacher-001",
+      "studentId": "student-001",
+      "stageComment": "课堂组织较为稳定",
+      "summaryComment": "具备成为语文教师的良好基础",
+      "finalScore": 91,
+      "submittedToCollege": true,
+      "confirmedByCollege": true
+    }
+  ],
+  "collegeApplications": [
+    {
+      "id": "college-app-001",
+      "schoolName": "滨江师范学院",
+      "collegeName": "数学与统计学院",
+      "contactName": "赵老师",
+      "contactPhone": "13500000001",
+      "description": "申请开通教育实习全过程管理平台",
+      "status": "待审核",
+      "reviewComment": "",
+      "createdAt": "2026-03-16T08:00:00.000Z"
+    }
+  ],
+  "logs": [
+    {
+      "id": "log-3e18e0b3",
+      "createdAt": "2026-03-18T14:12:39.498Z",
+      "type": "LOGIN",
+      "operatorId": "user-student-002",
+      "action": "用户登录",
+      "detail": "李四 登录系统"
+    },
+    {
+      "id": "log-6a575618",
+      "createdAt": "2026-03-18T14:12:02.798Z",
+      "type": "LOGIN",
+      "operatorId": "user-college-001",
+      "action": "用户登录",
+      "detail": "教育学院管理员 登录系统"
+    },
+    {
+      "id": "log-4c0f8d83",
+      "createdAt": "2026-03-18T14:12:02.795Z",
+      "type": "LOGIN",
+      "operatorId": "user-teacher-002",
+      "action": "用户登录",
+      "detail": "周老师 登录系统"
+    },
+    {
+      "id": "log-1881a8fa",
+      "createdAt": "2026-03-18T14:12:02.776Z",
+      "type": "LOGIN",
+      "operatorId": "user-student-002",
+      "action": "用户登录",
+      "detail": "李四 登录系统"
+    },
+    {
+      "id": "log-33ed8031",
+      "createdAt": "2026-03-18T14:09:44.866Z",
+      "type": "LOGIN",
+      "operatorId": "user-college-001",
+      "action": "用户登录",
+      "detail": "教育学院管理员 登录系统"
+    },
+    {
+      "id": "log-ed3f4dfa",
+      "createdAt": "2026-03-18T13:31:19.423Z",
+      "type": "LOGIN",
+      "operatorId": "user-college-001",
+      "action": "用户登录",
+      "detail": "教育学院管理员 登录系统"
+    },
+    {
+      "id": "log-001",
+      "type": "OPERATION",
+      "operatorId": "user-college-001",
+      "action": "审核实习申请",
+      "detail": "通过张三的实习申请",
+      "createdAt": "2026-03-04T08:00:00.000Z"
+    }
+  ]
+}

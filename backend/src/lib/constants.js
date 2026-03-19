@@ -1,0 +1,40 @@
+export const ROLES = {
+  STUDENT: "STUDENT",
+  TEACHER: "TEACHER",
+  COLLEGE_ADMIN: "COLLEGE_ADMIN",
+  SUPER_ADMIN: "SUPER_ADMIN",
+};
+
+export const INTERNSHIP_TYPES = {
+  TEACHING: "TEACHING",
+  HEAD_TEACHER: "HEAD_TEACHER",
+};
+
+export const FORM_STATUSES = {
+  DRAFT: "草稿",
+  SUBMITTED: "已提交",
+  TEACHER_REVIEWING: "教师审核中",
+  TEACHER_RETURNED: "教师退回",
+  TEACHER_APPROVED: "教师通过",
+  COLLEGE_REVIEWING: "学院审核中",
+  COLLEGE_RETURNED: "学院退回",
+  ARCHIVED: "已归档",
+  MODIFYING: "修改申请中",
+  ALLOW_MODIFY: "允许修改",
+  RESUBMITTED: "已重新提交",
+};
+
+export const MENTOR_APPLICATION_STATUSES = {
+  PENDING_TEACHER: "待教师确认",
+  TEACHER_REJECTED: "教师驳回",
+  PENDING_COLLEGE: "待学院复核",
+  COLLEGE_REJECTED: "学院驳回",
+  EFFECTIVE: "已生效",
+};
+
+export const INTERNSHIP_APPLICATION_STATUSES = {
+  DRAFT: "草稿",
+  PENDING_COLLEGE: "待学院审批",
+  REJECTED: "已退回",
+  APPROVED: "已通过",
+};

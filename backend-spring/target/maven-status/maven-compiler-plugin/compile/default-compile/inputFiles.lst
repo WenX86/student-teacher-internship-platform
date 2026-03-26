@@ -23,6 +23,7 @@ D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\entity\MessageNoticeEntity.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\entity\OrganizationEntity.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\entity\StudentEntity.java
+D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\entity\SystemSettingEntity.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\entity\TeacherEntity.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\entity\UserAccountEntity.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\InternshipPlatformApplication.java
@@ -38,6 +39,7 @@ D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\mapper\MessageNoticeMapper.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\mapper\OrganizationMapper.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\mapper\StudentMapper.java
+D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\mapper\SystemSettingMapper.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\mapper\TeacherMapper.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\mapper\UserAccountMapper.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\security\LoginUser.java

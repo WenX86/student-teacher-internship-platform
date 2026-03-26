@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS audit_log;
+DROP TABLE IF EXISTS system_setting;
 DROP TABLE IF EXISTS college_application;
 DROP TABLE IF EXISTS evaluation_record;
 DROP TABLE IF EXISTS guidance_record;
@@ -108,7 +109,13 @@ CREATE TABLE form_template (
     code VARCHAR(64) PRIMARY KEY,
     name VARCHAR(64) NOT NULL,
     category VARCHAR(32) NOT NULL,
-    applicable_types_json LONGTEXT
+    description VARCHAR(255),
+    applicable_types_json LONGTEXT,
+    field_schema_json LONGTEXT,
+    enabled TINYINT(1) DEFAULT 1,
+    sort_no INT DEFAULT 100,
+    created_at DATETIME,
+    updated_at DATETIME
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE form_instance (
@@ -161,8 +168,15 @@ CREATE TABLE evaluation_record (
     stage_comment VARCHAR(255),
     summary_comment VARCHAR(255),
     final_score INT,
+    dimension_scores_json LONGTEXT,
+    strengths_comment VARCHAR(255),
+    improvement_comment VARCHAR(255),
+    college_comment VARCHAR(255),
+    college_score INT,
     submitted_to_college TINYINT(1),
-    confirmed_by_college TINYINT(1)
+    confirmed_by_college TINYINT(1),
+    evaluated_at DATETIME,
+    college_confirmed_at DATETIME
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE college_application (
@@ -184,4 +198,13 @@ CREATE TABLE audit_log (
     action VARCHAR(128),
     detail VARCHAR(255),
     created_at DATETIME
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE system_setting (
+    setting_key VARCHAR(64) PRIMARY KEY,
+    setting_value VARCHAR(64) NOT NULL,
+    category VARCHAR(64),
+    name VARCHAR(128) NOT NULL,
+    description VARCHAR(255),
+    updated_at DATETIME
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -129,6 +129,68 @@ public final class Requests {
     ) {
     }
 
+    public record BatchFormReviewRequest(
+            @NotNull(message = "归档表单列表不能为空")
+            List<String> formIds,
+            @NotNull(message = "审核结论不能为空")
+            Boolean approved,
+            Integer score,
+            String comment
+    ) {
+    }
+
+    public record FormTemplateCreateRequest(
+            @NotBlank(message = "模板编码不能为空")
+            String code,
+            @NotBlank(message = "模板名称不能为空")
+            String name,
+            @NotBlank(message = "模板分类不能为空")
+            String category,
+            String description,
+            @NotNull(message = "适用实习类型不能为空")
+            List<String> applicableTypes,
+            @NotNull(message = "字段配置不能为空")
+            List<Map<String, Object>> fieldSchema,
+            Boolean enabled,
+            Integer sortNo
+    ) {
+    }
+
+    public record FormTemplateUpdateRequest(
+            @NotBlank(message = "模板名称不能为空")
+            String name,
+            @NotBlank(message = "模板分类不能为空")
+            String category,
+            String description,
+            @NotNull(message = "适用实习类型不能为空")
+            List<String> applicableTypes,
+            @NotNull(message = "字段配置不能为空")
+            List<Map<String, Object>> fieldSchema,
+            Boolean enabled,
+            Integer sortNo
+    ) {
+    }
+
+    public record StatusToggleRequest(
+            @NotNull(message = "启停状态不能为空")
+            Boolean enabled
+    ) {
+    }
+
+    public record SystemSettingUpdateItem(
+            @NotBlank(message = "参数键不能为空")
+            String key,
+            @NotBlank(message = "参数值不能为空")
+            String value
+    ) {
+    }
+
+    public record SystemSettingSaveRequest(
+            @NotNull(message = "参数列表不能为空")
+            List<SystemSettingUpdateItem> items
+    ) {
+    }
+
     public record GuidanceRecordCreateRequest(
             @NotBlank(message = "学生不能为空")
             String studentId,
@@ -147,7 +209,17 @@ public final class Requests {
             String studentId,
             String stageComment,
             String summaryComment,
-            Integer finalScore
+            Integer finalScore,
+            List<Map<String, Object>> dimensionScores,
+            String strengthsComment,
+            String improvementComment
+    ) {
+    }
+
+    public record EvaluationCollegeConfirmRequest(
+            @NotNull(message = "学院最终成绩不能为空")
+            Integer collegeScore,
+            String collegeComment
     ) {
     }
 }

@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node backend-server.js"
+    "start": "node backend-server.js",
+    "start:all": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\start-all.ps1 -NoPause",
+    "stop:all": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\stop-all.ps1 -NoPause"
   }
 }

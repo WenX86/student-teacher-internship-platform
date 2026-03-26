@@ -1,7 +1,7 @@
 <script setup>
 import { reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
+import { ElMessage } from "element-plus/es/components/message/index";
 import { useAuthStore } from "../stores/auth";
 
 const router = useRouter();
@@ -66,7 +66,7 @@ async function submit() {
         师范生教育实习全过程管理平台
       </h1>
       <p style="max-width:640px;font-size:18px;line-height:1.8;opacity:.88">
-        围绕指导关系建立、实习申请审批、核心表单审核归档三条主链，支撑学生、教师、学院管理员、超级管理员协同完成一期业务。
+        围绕指导关系建立、实习申请审批、核心表单审核归档三条主链，支持学生、教师、学院管理员、超级管理员协同完成一期业务。
       </p>
       <el-row :gutter="16" style="margin-top: 28px; max-width: 760px">
         <el-col :span="12" v-for="item in quickAccounts" :key="item.label">

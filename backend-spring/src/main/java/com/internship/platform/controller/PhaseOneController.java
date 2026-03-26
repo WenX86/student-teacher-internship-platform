@@ -36,6 +36,17 @@ public class PhaseOneController {
         return ApiResponse.ok(phaseOneService.messages(phaseOneService.currentLoginUser()));
     }
 
+    @GetMapping("/risk-alerts")
+    public ApiResponse<List<Map<String, Object>>> riskAlerts() {
+        return ApiResponse.ok(phaseOneService.riskAlerts(phaseOneService.currentLoginUser()));
+    }
+
+    @PostMapping("/risk-alerts/{id}/remind")
+    public ApiResponse<Void> sendRiskReminder(@PathVariable String id) {
+        phaseOneService.sendRiskReminder(phaseOneService.currentLoginUser(), id);
+        return ApiResponse.ok();
+    }
+
     @PostMapping("/messages/{id}/read")
     public ApiResponse<Void> markMessageRead(@PathVariable String id) {
         phaseOneService.markMessageRead(phaseOneService.currentLoginUser(), id);
@@ -167,6 +178,11 @@ public class PhaseOneController {
         return ApiResponse.ok();
     }
 
+    @PostMapping("/forms/batch-college-review")
+    public ApiResponse<Map<String, Object>> batchCollegeReviewForms(@Valid @RequestBody Requests.BatchFormReviewRequest request) {
+        return ApiResponse.ok(phaseOneService.batchCollegeReviewForms(phaseOneService.currentLoginUser(), request));
+    }
+
     @GetMapping("/guidance-records")
     public ApiResponse<List<Map<String, Object>>> guidanceRecords() {
         return ApiResponse.ok(phaseOneService.guidanceRecords(phaseOneService.currentLoginUser()));
@@ -189,9 +205,20 @@ public class PhaseOneController {
         return ApiResponse.ok();
     }
 
+    @PostMapping("/evaluations/{id}/college-confirm")
+    public ApiResponse<Void> collegeConfirmEvaluation(@PathVariable String id, @Valid @RequestBody Requests.EvaluationCollegeConfirmRequest request) {
+        phaseOneService.collegeConfirmEvaluation(phaseOneService.currentLoginUser(), id, request);
+        return ApiResponse.ok();
+    }
+
     @GetMapping("/reports/summary")
     public ApiResponse<Map<String, Object>> reportSummary() {
         return ApiResponse.ok(phaseOneService.reportSummary(phaseOneService.currentLoginUser()));
+    }
+
+    @GetMapping("/reports/center")
+    public ApiResponse<Map<String, Object>> reportCenter() {
+        return ApiResponse.ok(phaseOneService.reportCenter(phaseOneService.currentLoginUser()));
     }
 
     @GetMapping("/admin/college-applications")
@@ -208,6 +235,40 @@ public class PhaseOneController {
     @GetMapping("/admin/basic-data")
     public ApiResponse<Map<String, Object>> basicData() {
         return ApiResponse.ok(phaseOneService.basicData(phaseOneService.currentLoginUser()));
+    }
+
+    @GetMapping("/admin/system-settings")
+    public ApiResponse<List<Map<String, Object>>> systemSettings() {
+        return ApiResponse.ok(phaseOneService.systemSettings(phaseOneService.currentLoginUser()));
+    }
+
+    @PutMapping("/admin/system-settings")
+    public ApiResponse<Void> saveSystemSettings(@Valid @RequestBody Requests.SystemSettingSaveRequest request) {
+        phaseOneService.saveSystemSettings(phaseOneService.currentLoginUser(), request);
+        return ApiResponse.ok();
+    }
+
+    @GetMapping("/admin/form-templates")
+    public ApiResponse<List<Map<String, Object>>> adminFormTemplates() {
+        return ApiResponse.ok(phaseOneService.adminFormTemplates(phaseOneService.currentLoginUser()));
+    }
+
+    @PostMapping("/admin/form-templates")
+    public ApiResponse<Void> createFormTemplate(@Valid @RequestBody Requests.FormTemplateCreateRequest request) {
+        phaseOneService.createFormTemplate(phaseOneService.currentLoginUser(), request);
+        return ApiResponse.ok();
+    }
+
+    @PutMapping("/admin/form-templates/{code}")
+    public ApiResponse<Void> updateFormTemplate(@PathVariable String code, @Valid @RequestBody Requests.FormTemplateUpdateRequest request) {
+        phaseOneService.updateFormTemplate(phaseOneService.currentLoginUser(), code, request);
+        return ApiResponse.ok();
+    }
+
+    @PatchMapping("/admin/form-templates/{code}/status")
+    public ApiResponse<Void> changeFormTemplateStatus(@PathVariable String code, @Valid @RequestBody Requests.StatusToggleRequest request) {
+        phaseOneService.changeFormTemplateStatus(phaseOneService.currentLoginUser(), code, request);
+        return ApiResponse.ok();
     }
 
     @GetMapping("/admin/logs")

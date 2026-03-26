@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
@@ -18,10 +18,11 @@ const menus = {
   ],
   TEACHER: [
     { label: "工作台", path: "/teacher/dashboard" },
-    { label: "指导申请待确认", path: "/teacher/mentor-requests" },
+    { label: "指导申请确认", path: "/teacher/mentor-requests" },
     { label: "材料审核", path: "/teacher/reviews" },
     { label: "指导记录", path: "/teacher/guidance-records" },
     { label: "评价管理", path: "/teacher/evaluations" },
+    { label: "预警催办", path: "/teacher/alerts" },
     { label: "消息中心", path: "/teacher/messages" },
   ],
   COLLEGE_ADMIN: [
@@ -32,12 +33,16 @@ const menus = {
     { label: "实习单位", path: "/college/organizations" },
     { label: "实习审批", path: "/college/internship-applications" },
     { label: "归档中心", path: "/college/archive" },
+    { label: "评价汇总", path: "/college/evaluations" },
+    { label: "预警催办", path: "/college/alerts" },
     { label: "统计报表", path: "/college/reports" },
     { label: "消息中心", path: "/college/messages" },
   ],
   SUPER_ADMIN: [
-    { label: "入驻审核", path: "/admin/dashboard" },
+    { label: "平台看板", path: "/admin/dashboard" },
     { label: "基础数据", path: "/admin/basic-data" },
+    { label: "参数配置", path: "/admin/params" },
+    { label: "表单模板", path: "/admin/form-templates" },
     { label: "日志审计", path: "/admin/logs" },
   ],
 };
@@ -50,7 +55,7 @@ const roleLabelMap = {
 };
 
 const currentMenus = computed(() => menus[authStore.user?.role] || []);
-const roleLabel = computed(() => roleLabelMap[authStore.user?.role] || "平台");
+const roleLabel = computed(() => roleLabelMap[authStore.user?.role] || "平台用户");
 
 function handleLogout() {
   authStore.logout();
@@ -63,21 +68,30 @@ function handleLogout() {
     <el-aside width="240px" style="background: linear-gradient(180deg, #134e4a 0%, #0f172a 100%); color: white">
       <div style="padding: 28px 22px 18px; border-bottom: 1px solid rgba(255,255,255,0.1)">
         <div style="font-size: 12px; opacity: 0.8">一期建设</div>
-        <div style="font-size: 20px; font-weight: 700; margin-top: 6px">师范生教育实习平台</div>
+        <div style="font-size: 20px; font-weight: 700; margin-top: 6px">师范生教育实习全过程管理平台</div>
         <div style="font-size: 13px; margin-top: 8px; opacity: 0.75">{{ roleLabel }}</div>
       </div>
-      <el-menu :default-active="route.path" background-color="transparent" text-color="#d1fae5" active-text-color="#fff7ed" style="border-right: none" router>
+      <el-menu
+        :default-active="route.path"
+        background-color="transparent"
+        text-color="#d1fae5"
+        active-text-color="#fff7ed"
+        style="border-right: none"
+        router
+      >
         <el-menu-item v-for="item in currentMenus" :key="item.path" :index="item.path">{{ item.label }}</el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
-      <el-header style="display:flex;align-items:center;justify-content:space-between;padding:18px 28px;background:rgba(255,255,255,0.7);backdrop-filter: blur(12px);border-bottom:1px solid rgba(15,23,42,0.08)">
+      <el-header
+        style="display:flex;align-items:center;justify-content:space-between;padding:18px 28px;background:rgba(255,255,255,0.7);backdrop-filter: blur(12px);border-bottom:1px solid rgba(15,23,42,0.08)"
+      >
         <div>
           <div style="font-size: 22px; font-weight: 700">{{ authStore.user?.name }}</div>
           <div class="subtle">{{ authStore.user?.account }} | {{ roleLabel }}</div>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
-          <el-tag type="success">一期主流程已打通</el-tag>
+          <el-tag type="success">一期主链已打通</el-tag>
           <el-button plain @click="handleLogout">退出登录</el-button>
         </div>
       </el-header>

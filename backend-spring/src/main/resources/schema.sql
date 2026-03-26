@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS audit_log;
+DROP TABLE IF EXISTS system_setting;
 DROP TABLE IF EXISTS college_application;
 DROP TABLE IF EXISTS evaluation_record;
 DROP TABLE IF EXISTS guidance_record;
@@ -108,7 +109,13 @@ CREATE TABLE form_template (
     code VARCHAR(64) PRIMARY KEY,
     name VARCHAR(64) NOT NULL,
     category VARCHAR(32) NOT NULL,
-    applicable_types_json CLOB
+    description VARCHAR(255),
+    applicable_types_json CLOB,
+    field_schema_json CLOB,
+    enabled BOOLEAN DEFAULT TRUE,
+    sort_no INT DEFAULT 100,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
 );
 
 CREATE TABLE form_instance (
@@ -161,8 +168,15 @@ CREATE TABLE evaluation_record (
     stage_comment VARCHAR(255),
     summary_comment VARCHAR(255),
     final_score INT,
+    dimension_scores_json CLOB,
+    strengths_comment VARCHAR(255),
+    improvement_comment VARCHAR(255),
+    college_comment VARCHAR(255),
+    college_score INT,
     submitted_to_college BOOLEAN,
-    confirmed_by_college BOOLEAN
+    confirmed_by_college BOOLEAN,
+    evaluated_at TIMESTAMP,
+    college_confirmed_at TIMESTAMP
 );
 
 CREATE TABLE college_application (
@@ -184,4 +198,13 @@ CREATE TABLE audit_log (
     action VARCHAR(128),
     detail VARCHAR(255),
     created_at TIMESTAMP
+);
+
+CREATE TABLE system_setting (
+    setting_key VARCHAR(64) PRIMARY KEY,
+    setting_value VARCHAR(64) NOT NULL,
+    category VARCHAR(64),
+    name VARCHAR(128) NOT NULL,
+    description VARCHAR(255),
+    updated_at TIMESTAMP
 );

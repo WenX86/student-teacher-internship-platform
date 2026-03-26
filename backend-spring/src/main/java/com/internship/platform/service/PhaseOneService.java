@@ -24,12 +24,60 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class PhaseOneService {
+
+    private record SettingOption(String label, String value) {
+    }
+
+    private record SystemSettingSpec(
+            String key,
+            String category,
+            String name,
+            String description,
+            String defaultValue,
+            String valueType,
+            int sortNo,
+            List<SettingOption> options
+    ) {
+    }
+
+    private static final List<SettingOption> ALERT_LEVEL_OPTIONS = List.of(
+            new SettingOption("提示", "info"),
+            new SettingOption("预警", "warning"),
+            new SettingOption("高危", "danger")
+    );
+
+    private static final List<SystemSettingSpec> SYSTEM_SETTING_SPECS = List.of(
+            new SystemSettingSpec("teacher_review_timeout_days", "REMINDER", "教师审核超时天数", "学生提交表单后，教师超过该天数未处理则产生预警。", "2", "INTEGER", 10, List.of()),
+            new SystemSettingSpec("teacher_review_alert_level", "REMINDER", "教师审核预警级别", "控制教师审核超时预警的展示级别。", "warning", "SELECT", 11, ALERT_LEVEL_OPTIONS),
+            new SystemSettingSpec("teacher_review_remind_enabled", "REMINDER", "教师审核允许催办", "控制教师审核超时预警是否允许一键催办。", "1", "BOOLEAN", 12, List.of()),
+            new SystemSettingSpec("teacher_review_reminder_title_template", "REMINDER", "教师审核催办标题模板", "可使用 {title}、{targetName}、{overdueDays} 等变量。", "{title}", "TEXT", 13, List.of()),
+            new SystemSettingSpec("teacher_review_reminder_content_template", "REMINDER", "教师审核催办内容模板", "可使用 {title}、{targetName}、{overdueDays} 等变量。", "请尽快处理 {title}，当前已超时 {overdueDays} 天。", "TEXT", 14, List.of()),
+            new SystemSettingSpec("college_review_timeout_days", "REMINDER", "学院处理超时天数", "教师审核通过后的学院审批、归档与复核超过该天数则产生预警。", "2", "INTEGER", 20, List.of()),
+            new SystemSettingSpec("college_review_alert_level", "REMINDER", "学院处理预警级别", "控制学院审批、归档与复核超时预警的展示级别。", "warning", "SELECT", 21, ALERT_LEVEL_OPTIONS),
+            new SystemSettingSpec("college_review_remind_enabled", "REMINDER", "学院处理允许催办", "控制学院审批、归档与复核超时预警是否允许一键催办。", "1", "BOOLEAN", 22, List.of()),
+            new SystemSettingSpec("college_review_reminder_title_template", "REMINDER", "学院处理催办标题模板", "可使用 {title}、{targetName}、{overdueDays} 等变量。", "{title}", "TEXT", 23, List.of()),
+            new SystemSettingSpec("college_review_reminder_content_template", "REMINDER", "学院处理催办内容模板", "可使用 {title}、{targetName}、{overdueDays} 等变量。", "请尽快处理 {title}，当前已超时 {overdueDays} 天。", "TEXT", 24, List.of()),
+            new SystemSettingSpec("student_resubmit_timeout_days", "REMINDER", "学生整改超时天数", "学生被退回后超过该天数未重新提交则产生预警。", "2", "INTEGER", 30, List.of()),
+            new SystemSettingSpec("student_resubmit_alert_level", "REMINDER", "学生整改预警级别", "控制学生退回未整改预警的展示级别。", "danger", "SELECT", 31, ALERT_LEVEL_OPTIONS),
+            new SystemSettingSpec("student_resubmit_remind_enabled", "REMINDER", "学生整改允许催办", "控制学生退回未整改预警是否允许一键催办。", "1", "BOOLEAN", 32, List.of()),
+            new SystemSettingSpec("student_resubmit_reminder_title_template", "REMINDER", "学生整改催办标题模板", "可使用 {title}、{targetName}、{overdueDays} 等变量。", "{title}", "TEXT", 33, List.of()),
+            new SystemSettingSpec("student_resubmit_reminder_content_template", "REMINDER", "学生整改催办内容模板", "可使用 {title}、{targetName}、{overdueDays} 等变量。", "请尽快修改并重新提交相关材料，当前已超时 {overdueDays} 天。", "TEXT", 34, List.of()),
+            new SystemSettingSpec("evaluation_confirm_timeout_days", "REMINDER", "评价确认超时天数", "教师提交评价后学院超过该天数未确认则产生预警。", "3", "INTEGER", 40, List.of()),
+            new SystemSettingSpec("evaluation_confirm_alert_level", "REMINDER", "评价确认预警级别", "控制评价确认超时预警的展示级别。", "warning", "SELECT", 41, ALERT_LEVEL_OPTIONS),
+            new SystemSettingSpec("evaluation_confirm_remind_enabled", "REMINDER", "评价确认允许催办", "控制评价确认超时预警是否允许一键催办。", "1", "BOOLEAN", 42, List.of()),
+            new SystemSettingSpec("evaluation_confirm_reminder_title_template", "REMINDER", "评价确认催办标题模板", "可使用 {title}、{targetName}、{overdueDays} 等变量。", "{title}", "TEXT", 43, List.of()),
+            new SystemSettingSpec("evaluation_confirm_reminder_content_template", "REMINDER", "评价确认催办内容模板", "可使用 {title}、{targetName}、{overdueDays} 等变量。", "请尽快确认 {title}，当前已超时 {overdueDays} 天。", "TEXT", 44, List.of())
+    );
+
+    private static final Map<String, SystemSettingSpec> SYSTEM_SETTING_SPEC_MAP = SYSTEM_SETTING_SPECS.stream()
+            .collect(Collectors.toMap(SystemSettingSpec::key, item -> item, (left, right) -> left, LinkedHashMap::new));
 
     private final ObjectMapper objectMapper;
     private final TokenSessionService tokenSessionService;
@@ -47,6 +95,7 @@ public class PhaseOneService {
     private final EvaluationRecordMapper evaluationRecordMapper;
     private final CollegeApplicationMapper collegeApplicationMapper;
     private final AuditLogMapper auditLogMapper;
+    private final SystemSettingMapper systemSettingMapper;
 
     public Map<String, Object> login(Requests.LoginRequest request) {
         UserAccountEntity user = userAccountMapper.selectOne(
@@ -121,6 +170,39 @@ public class PhaseOneService {
         }
         message.setReadFlag(true);
         messageNoticeMapper.updateById(message);
+    }
+
+    public List<Map<String, Object>> riskAlerts(LoginUser loginUser) {
+        return switch (RoleType.valueOf(loginUser.role())) {
+            case STUDENT -> studentRiskAlerts(loginUser);
+            case TEACHER -> teacherRiskAlerts(loginUser);
+            case COLLEGE_ADMIN -> collegeRiskAlerts(loginUser);
+            case SUPER_ADMIN -> List.of();
+        };
+    }
+
+    @Transactional
+    public void sendRiskReminder(LoginUser loginUser, String alertId) {
+        Map<String, Object> alert = riskAlerts(loginUser).stream()
+                .filter(item -> Objects.equals(item.get("id"), alertId))
+                .findFirst()
+                .orElseThrow(() -> new BizException("预警提醒不存在或已失效"));
+        if (!Boolean.TRUE.equals(alert.get("remindable"))) {
+            throw new BizException("当前预警不支持发送催办提醒");
+        }
+        String targetUserId = Optional.ofNullable(alert.get("targetUserId")).map(String::valueOf).orElse("");
+        if (targetUserId.isBlank()) {
+            throw new BizException("当前预警未配置提醒对象");
+        }
+
+        createMessage(
+                targetUserId,
+                "催办提醒",
+                Optional.ofNullable(alert.get("reminderTitle")).map(String::valueOf).orElse(Optional.ofNullable(alert.get("title")).map(String::valueOf).orElse("流程催办提醒")),
+                Optional.ofNullable(alert.get("reminderContent")).map(String::valueOf).orElse("请尽快处理相关任务。"),
+                Optional.ofNullable(alert.get("reminderLink")).map(String::valueOf).orElse("/messages")
+        );
+        insertAudit("REMINDER", loginUser.id(), "发送催办提醒", Optional.ofNullable(alert.get("title")).map(String::valueOf).orElse(alertId));
     }
 
     public List<Map<String, Object>> students(LoginUser loginUser) {
@@ -488,10 +570,11 @@ public class PhaseOneService {
     }
 
     public List<Map<String, Object>> formTemplates(LoginUser loginUser) {
-        List<FormTemplateEntity> templates = formTemplateMapper.selectList(Wrappers.<FormTemplateEntity>lambdaQuery());
+        List<FormTemplateEntity> templates = listAllTemplates();
         if (RoleType.STUDENT.name().equals(loginUser.role())) {
             String internshipType = requireStudentByUser(loginUser.id()).getInternshipType();
             return templates.stream()
+                    .filter(this::isTemplateEnabled)
                     .filter(template -> readList(template.getApplicableTypesJson()).contains(internshipType))
                     .map(this::toFormTemplatePayload)
                     .toList();
@@ -543,6 +626,9 @@ public class PhaseOneService {
         requireRole(loginUser, RoleType.STUDENT);
         StudentEntity student = requireStudentByUser(loginUser.id());
         FormTemplateEntity template = requireTemplate(request.templateCode());
+        if (!isTemplateEnabled(template)) {
+            throw new BizException("当前表单模板已停用");
+        }
 
         FormInstanceEntity entity = new FormInstanceEntity();
         entity.setId(IdGenerator.nextId("form"));
@@ -592,6 +678,9 @@ public class PhaseOneService {
         ));
 
         entity.setVersionNo(entity.getVersionNo() + 1);
+        if (!isTemplateEnabled(requireTemplate(entity.getTemplateCode()))) {
+            throw new BizException("当前表单模板已停用");
+        }
         entity.setContentJson(writeJson(request.content()));
         entity.setAttachmentsJson(writeJson(Optional.ofNullable(request.attachments()).orElse(List.of())));
         entity.setStatus(Boolean.TRUE.equals(request.submit()) ? FormStatus.TEACHER_REVIEWING.getLabel() : FormStatus.DRAFT.getLabel());
@@ -649,14 +738,77 @@ public class PhaseOneService {
     public void collegeReviewForm(LoginUser loginUser, String formId, Requests.FormReviewRequest request) {
         requireRole(loginUser, RoleType.COLLEGE_ADMIN);
         FormInstanceEntity entity = requireForm(formId);
-        entity.setCollegeComment(Optional.ofNullable(request.comment()).orElse(""));
-        entity.setCollegeReviewedAt(LocalDateTime.now());
-        entity.setUpdatedAt(LocalDateTime.now());
-        entity.setStatus(Boolean.TRUE.equals(request.approved()) ? FormStatus.ARCHIVED.getLabel() : FormStatus.COLLEGE_RETURNED.getLabel());
+        ensureCollegeAdminFormAccess(loginUser, entity);
+        applyCollegeReview(entity, request.approved(), request.score(), request.comment());
         formInstanceMapper.updateById(entity);
+        notifyStudentAfterCollegeReview(entity, request.approved(), request.comment());
+    }
 
-        StudentEntity student = requireStudent(entity.getStudentId());
-        createMessage(requireUser(student.getUserId()).getId(), Boolean.TRUE.equals(request.approved()) ? "审核结果" : "退回通知", entity.getTemplateName() + (Boolean.TRUE.equals(request.approved()) ? "已归档" : "被学院退回"), Optional.ofNullable(request.comment()).orElse("请查看学院处理意见。"), "/student/tasks");
+    @Transactional
+    public Map<String, Object> batchCollegeReviewForms(LoginUser loginUser, Requests.BatchFormReviewRequest request) {
+        requireRole(loginUser, RoleType.COLLEGE_ADMIN);
+        if (request.formIds() == null || request.formIds().isEmpty()) {
+            throw new BizException("请至少选择一条待处理表单");
+        }
+        validateReviewScore(request.score());
+
+        LinkedHashSet<String> formIds = request.formIds().stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(item -> !item.isBlank())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (formIds.isEmpty()) {
+            throw new BizException("请至少选择一条待处理表单");
+        }
+
+        Map<String, FormInstanceEntity> formMap = formInstanceMapper.selectBatchIds(formIds).stream()
+                .collect(Collectors.toMap(FormInstanceEntity::getId, item -> item));
+
+        int processedCount = 0;
+        int archivedCount = 0;
+        int returnedCount = 0;
+        List<Map<String, Object>> skipped = new ArrayList<>();
+
+        for (String formId : formIds) {
+            FormInstanceEntity entity = formMap.get(formId);
+            if (entity == null) {
+                skipped.add(Map.of("id", formId, "reason", "表单不存在"));
+                continue;
+            }
+            try {
+                ensureCollegeAdminFormAccess(loginUser, entity);
+                if (!FormStatus.COLLEGE_REVIEWING.getLabel().equals(entity.getStatus())) {
+                    skipped.add(Map.of("id", formId, "reason", "当前状态不可批量归档"));
+                    continue;
+                }
+
+                applyCollegeReview(entity, request.approved(), request.score(), request.comment());
+                formInstanceMapper.updateById(entity);
+                notifyStudentAfterCollegeReview(entity, request.approved(), request.comment());
+                processedCount++;
+                if (Boolean.TRUE.equals(request.approved())) {
+                    archivedCount++;
+                } else {
+                    returnedCount++;
+                }
+            } catch (BizException exception) {
+                skipped.add(Map.of("id", formId, "reason", exception.getMessage()));
+            }
+        }
+
+        insertAudit(
+                "FORM",
+                loginUser.id(),
+                Boolean.TRUE.equals(request.approved()) ? "批量归档表单" : "批量退回表单",
+                "处理 " + processedCount + " 条，跳过 " + skipped.size() + " 条"
+        );
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("processedCount", processedCount);
+        payload.put("archivedCount", archivedCount);
+        payload.put("returnedCount", returnedCount);
+        payload.put("skipped", skipped);
+        return payload;
     }
 
     public List<Map<String, Object>> guidanceRecords(LoginUser loginUser) {
@@ -718,12 +870,22 @@ public class PhaseOneService {
         return list.stream().map(item -> {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("id", item.getId());
+            payload.put("teacherId", item.getTeacherId());
             payload.put("studentId", item.getStudentId());
             payload.put("stageComment", item.getStageComment());
             payload.put("summaryComment", item.getSummaryComment());
-            payload.put("finalScore", item.getFinalScore());
+            payload.put("recommendedScore", item.getFinalScore());
+            payload.put("finalScore", item.getCollegeScore() == null ? item.getFinalScore() : item.getCollegeScore());
+            payload.put("collegeScore", item.getCollegeScore());
+            payload.put("dimensionScores", readMapList(item.getDimensionScoresJson()));
+            payload.put("strengthsComment", item.getStrengthsComment());
+            payload.put("improvementComment", item.getImprovementComment());
+            payload.put("collegeComment", item.getCollegeComment());
             payload.put("submittedToCollege", item.getSubmittedToCollege());
             payload.put("confirmedByCollege", item.getConfirmedByCollege());
+            payload.put("evaluatedAt", item.getEvaluatedAt());
+            payload.put("collegeConfirmedAt", item.getCollegeConfirmedAt());
+            payload.put("teacher", toTeacherSimple(requireTeacher(item.getTeacherId())));
             payload.put("student", toStudentSimple(requireStudent(item.getStudentId())));
             return payload;
         }).toList();
@@ -743,37 +905,128 @@ public class PhaseOneService {
             entity.setId(IdGenerator.nextId("eval"));
             entity.setTeacherId(teacher.getId());
             entity.setStudentId(request.studentId());
-            entity.setConfirmedByCollege(false);
-            entity.setSubmittedToCollege(true);
-            entity.setStageComment(request.stageComment());
-            entity.setSummaryComment(request.summaryComment());
-            entity.setFinalScore(request.finalScore());
+            applyTeacherEvaluation(entity, request);
             evaluationRecordMapper.insert(entity);
+            notifyCollegeForEvaluation(entity);
             return;
         }
-        entity.setStageComment(request.stageComment());
-        entity.setSummaryComment(request.summaryComment());
-        entity.setFinalScore(request.finalScore());
-        entity.setSubmittedToCollege(true);
+        applyTeacherEvaluation(entity, request);
         evaluationRecordMapper.updateById(entity);
+        notifyCollegeForEvaluation(entity);
+    }
+
+    @Transactional
+    public void collegeConfirmEvaluation(LoginUser loginUser, String evaluationId, Requests.EvaluationCollegeConfirmRequest request) {
+        requireRole(loginUser, RoleType.COLLEGE_ADMIN);
+        EvaluationRecordEntity entity = evaluationRecordMapper.selectById(evaluationId);
+        if (entity == null) {
+            throw new BizException("评价记录不存在");
+        }
+        StudentEntity student = requireStudent(entity.getStudentId());
+        if (!Objects.equals(student.getCollegeId(), loginUser.collegeId())) {
+            throw new BizException("无权确认该评价");
+        }
+        if (request.collegeScore() < 0 || request.collegeScore() > 100) {
+            throw new BizException("学院最终成绩需在 0 到 100 之间");
+        }
+        entity.setCollegeScore(request.collegeScore());
+        entity.setCollegeComment(Optional.ofNullable(request.collegeComment()).orElse(""));
+        entity.setConfirmedByCollege(true);
+        entity.setCollegeConfirmedAt(LocalDateTime.now());
+        evaluationRecordMapper.updateById(entity);
+
+        createMessage(
+                requireUser(student.getUserId()).getId(),
+                "评价结果",
+                "学院已确认实习评价",
+                Optional.ofNullable(request.collegeComment()).filter(comment -> !comment.isBlank()).orElse("请查看最终成绩与评价维度结果。"),
+                "/student/results"
+        );
+        insertAudit("EVALUATION", loginUser.id(), "学院确认评价", student.getName() + " 的评价已确认");
     }
 
     public Map<String, Object> reportSummary(LoginUser loginUser) {
         requireRole(loginUser, RoleType.COLLEGE_ADMIN, RoleType.SUPER_ADMIN);
-        List<StudentEntity> students = RoleType.COLLEGE_ADMIN.name().equals(loginUser.role())
-                ? studentMapper.selectList(Wrappers.<StudentEntity>lambdaQuery().eq(StudentEntity::getCollegeId, loginUser.collegeId()))
-                : studentMapper.selectList(Wrappers.<StudentEntity>lambdaQuery());
+        List<StudentEntity> students = scopedStudents(loginUser);
+        List<TeacherEntity> teachers = scopedTeachers(loginUser);
         Set<String> studentIds = students.stream().map(StudentEntity::getId).collect(Collectors.toSet());
-        List<TeacherEntity> teachers = RoleType.COLLEGE_ADMIN.name().equals(loginUser.role())
-                ? teacherMapper.selectList(Wrappers.<TeacherEntity>lambdaQuery().eq(TeacherEntity::getCollegeId, loginUser.collegeId()))
-                : teacherMapper.selectList(Wrappers.<TeacherEntity>lambdaQuery());
-        List<FormInstanceEntity> forms = studentIds.isEmpty() ? List.of() : formInstanceMapper.selectList(
-                Wrappers.<FormInstanceEntity>lambdaQuery().in(FormInstanceEntity::getStudentId, studentIds)
-        );
+        List<FormInstanceEntity> forms = listFormsByStudentIds(studentIds);
+        return buildSummaryPayload(students, teachers, studentIds, forms);
+    }
+
+    public Map<String, Object> reportCenter(LoginUser loginUser) {
+        requireRole(loginUser, RoleType.COLLEGE_ADMIN, RoleType.SUPER_ADMIN);
+        List<StudentEntity> students = scopedStudents(loginUser);
+        List<TeacherEntity> teachers = scopedTeachers(loginUser);
+        List<OrganizationEntity> organizations = scopedOrganizations(loginUser);
+        Set<String> studentIds = students.stream().map(StudentEntity::getId).collect(Collectors.toSet());
+        List<FormInstanceEntity> forms = listFormsByStudentIds(studentIds);
+        List<InternshipApplicationEntity> internships = listInternshipsByStudentIds(studentIds);
+        List<EvaluationRecordEntity> evaluations = listEvaluationsByStudentIds(studentIds);
+        List<MentorApplicationEntity> effectiveGuidance = listEffectiveGuidanceByStudentIds(studentIds);
+
+        long archivedCount = forms.stream().filter(item -> FormStatus.ARCHIVED.getLabel().equals(item.getStatus())).count();
+        long pendingArchiveCount = forms.stream().filter(item -> FormStatus.COLLEGE_REVIEWING.getLabel().equals(item.getStatus())).count();
+        long confirmedEvaluationCount = evaluations.stream().filter(item -> Boolean.TRUE.equals(item.getConfirmedByCollege())).count();
+        double averageScore = forms.stream()
+                .map(FormInstanceEntity::getScore)
+                .filter(Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .average()
+                .orElse(0);
+
+        Map<String, Object> overview = new LinkedHashMap<>();
+        overview.put("studentCount", students.size());
+        overview.put("teacherCount", teachers.size());
+        overview.put("organizationCount", organizations.size());
+        overview.put("internshipCount", internships.size());
+        overview.put("formCount", forms.size());
+        overview.put("archivedCount", archivedCount);
+        overview.put("pendingArchiveCount", pendingArchiveCount);
+        overview.put("archiveRate", forms.isEmpty() ? 0 : Math.round((archivedCount * 100.0) / forms.size()));
+        overview.put("confirmedEvaluationCount", confirmedEvaluationCount);
+        overview.put("averageScore", Math.round(averageScore * 10.0) / 10.0);
 
         Map<String, Object> studentsPayload = new LinkedHashMap<>();
+        studentsPayload.put("statusDistribution", toCountList(students.stream().collect(Collectors.groupingBy(item -> Optional.ofNullable(item.getInternshipStatus()).orElse("未开始"), LinkedHashMap::new, Collectors.counting()))));
+        studentsPayload.put("typeDistribution", toCountList(students.stream().collect(Collectors.groupingBy(item -> Optional.ofNullable(item.getInternshipType()).orElse("未分类"), LinkedHashMap::new, Collectors.counting()))));
+
+        Map<String, Object> formsPayload = new LinkedHashMap<>();
+        formsPayload.put("statusDistribution", toCountList(forms.stream().collect(Collectors.groupingBy(item -> Optional.ofNullable(item.getStatus()).orElse("未知"), LinkedHashMap::new, Collectors.counting()))));
+        formsPayload.put("templateRanking", buildTemplateRanking(forms));
+
+        Map<String, Object> teachersPayload = new LinkedHashMap<>();
+        teachersPayload.put("workload", buildTeacherWorkload(teachers, effectiveGuidance, forms, evaluations));
+
+        Map<String, Object> evaluationsPayload = new LinkedHashMap<>();
+        evaluationsPayload.put("summary", buildEvaluationSummary(evaluations));
+        evaluationsPayload.put("scoreDistribution", buildScoreDistribution(evaluations));
+
+        Map<String, Object> organizationsPayload = new LinkedHashMap<>();
+        organizationsPayload.put("cooperationDistribution", toCountList(organizations.stream().collect(Collectors.groupingBy(item -> Optional.ofNullable(item.getCooperationStatus()).orElse("未设置"), LinkedHashMap::new, Collectors.counting()))));
+        organizationsPayload.put("usageRanking", buildOrganizationUsageRanking(organizations, internships));
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("overview", overview);
+        payload.put("summary", buildSummaryPayload(students, teachers, studentIds, forms));
+        payload.put("students", studentsPayload);
+        payload.put("forms", formsPayload);
+        payload.put("teachers", teachersPayload);
+        payload.put("evaluations", evaluationsPayload);
+        payload.put("organizations", organizationsPayload);
+        payload.put("trends", buildMonthlyTrend(forms, evaluations));
+        return payload;
+    }
+
+    private Map<String, Object> buildSummaryPayload(List<StudentEntity> students,
+                                                    List<TeacherEntity> teachers,
+                                                    Set<String> studentIds,
+                                                    List<FormInstanceEntity> forms) {
+        Map<String, Object> studentsPayload = new LinkedHashMap<>();
         studentsPayload.put("total", students.size());
-        studentsPayload.put("applied", studentIds.isEmpty() ? 0 : internshipApplicationMapper.selectCount(Wrappers.<InternshipApplicationEntity>lambdaQuery().in(InternshipApplicationEntity::getStudentId, studentIds)));
+        studentsPayload.put("applied", studentIds.isEmpty() ? 0 : internshipApplicationMapper.selectCount(
+                Wrappers.<InternshipApplicationEntity>lambdaQuery().in(InternshipApplicationEntity::getStudentId, studentIds)
+        ));
         studentsPayload.put("active", students.stream().filter(item -> "实习中".equals(item.getInternshipStatus())).count());
 
         Map<String, Object> teacherPayload = new LinkedHashMap<>();
@@ -796,6 +1049,452 @@ public class PhaseOneService {
         payload.put("students", studentsPayload);
         payload.put("teachers", teacherPayload);
         payload.put("forms", formPayload);
+        return payload;
+    }
+
+    private List<StudentEntity> scopedStudents(LoginUser loginUser) {
+        return RoleType.COLLEGE_ADMIN.name().equals(loginUser.role())
+                ? studentMapper.selectList(Wrappers.<StudentEntity>lambdaQuery().eq(StudentEntity::getCollegeId, loginUser.collegeId()))
+                : studentMapper.selectList(Wrappers.<StudentEntity>lambdaQuery());
+    }
+
+    private List<TeacherEntity> scopedTeachers(LoginUser loginUser) {
+        return RoleType.COLLEGE_ADMIN.name().equals(loginUser.role())
+                ? teacherMapper.selectList(Wrappers.<TeacherEntity>lambdaQuery().eq(TeacherEntity::getCollegeId, loginUser.collegeId()))
+                : teacherMapper.selectList(Wrappers.<TeacherEntity>lambdaQuery());
+    }
+
+    private List<OrganizationEntity> scopedOrganizations(LoginUser loginUser) {
+        return RoleType.COLLEGE_ADMIN.name().equals(loginUser.role())
+                ? organizationMapper.selectList(Wrappers.<OrganizationEntity>lambdaQuery().eq(OrganizationEntity::getCollegeId, loginUser.collegeId()))
+                : organizationMapper.selectList(Wrappers.<OrganizationEntity>lambdaQuery());
+    }
+
+    private List<FormInstanceEntity> listFormsByStudentIds(Set<String> studentIds) {
+        return studentIds.isEmpty() ? List.of() : formInstanceMapper.selectList(
+                Wrappers.<FormInstanceEntity>lambdaQuery()
+                        .in(FormInstanceEntity::getStudentId, studentIds)
+                        .orderByDesc(FormInstanceEntity::getUpdatedAt)
+        );
+    }
+
+    private List<InternshipApplicationEntity> listInternshipsByStudentIds(Set<String> studentIds) {
+        return studentIds.isEmpty() ? List.of() : internshipApplicationMapper.selectList(
+                Wrappers.<InternshipApplicationEntity>lambdaQuery()
+                        .in(InternshipApplicationEntity::getStudentId, studentIds)
+                        .orderByDesc(InternshipApplicationEntity::getCreatedAt)
+        );
+    }
+
+    private List<MentorApplicationEntity> listMentorApplicationsByStudentIds(Set<String> studentIds) {
+        return studentIds.isEmpty() ? List.of() : mentorApplicationMapper.selectList(
+                Wrappers.<MentorApplicationEntity>lambdaQuery()
+                        .in(MentorApplicationEntity::getStudentId, studentIds)
+                        .orderByDesc(MentorApplicationEntity::getCreatedAt)
+        );
+    }
+
+    private List<EvaluationRecordEntity> listEvaluationsByStudentIds(Set<String> studentIds) {
+        return studentIds.isEmpty() ? List.of() : evaluationRecordMapper.selectList(
+                Wrappers.<EvaluationRecordEntity>lambdaQuery()
+                        .in(EvaluationRecordEntity::getStudentId, studentIds)
+                        .orderByDesc(EvaluationRecordEntity::getEvaluatedAt)
+        );
+    }
+
+    private List<MentorApplicationEntity> listEffectiveGuidanceByStudentIds(Set<String> studentIds) {
+        return studentIds.isEmpty() ? List.of() : mentorApplicationMapper.selectList(
+                Wrappers.<MentorApplicationEntity>lambdaQuery()
+                        .in(MentorApplicationEntity::getStudentId, studentIds)
+                        .eq(MentorApplicationEntity::getStatus, MentorApplicationStatus.EFFECTIVE.getLabel())
+        );
+    }
+
+    private UserAccountEntity firstCollegeAdminUser(String collegeId) {
+        if (collegeId == null || collegeId.isBlank()) {
+            return null;
+        }
+        return userAccountMapper.selectOne(
+                Wrappers.<UserAccountEntity>lambdaQuery()
+                        .eq(UserAccountEntity::getRole, RoleType.COLLEGE_ADMIN.name())
+                        .eq(UserAccountEntity::getCollegeId, collegeId)
+                        .last("limit 1")
+        );
+    }
+
+    private long overdueDays(LocalDateTime baseline, long thresholdDays) {
+        if (baseline == null) {
+            return -1;
+        }
+        long days = ChronoUnit.DAYS.between(baseline, LocalDateTime.now());
+        return days >= thresholdDays ? days - thresholdDays : -1;
+    }
+
+    private int teacherReviewTimeoutDays() {
+        return getSettingInt("teacher_review_timeout_days", 2);
+    }
+
+    private int collegeReviewTimeoutDays() {
+        return getSettingInt("college_review_timeout_days", 2);
+    }
+
+    private int studentResubmitTimeoutDays() {
+        return getSettingInt("student_resubmit_timeout_days", 2);
+    }
+
+    private int evaluationConfirmTimeoutDays() {
+        return getSettingInt("evaluation_confirm_timeout_days", 3);
+    }
+
+    private int getSettingInt(String key, int defaultValue) {
+        String value = getSettingString(key, String.valueOf(defaultValue));
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException exception) {
+            return defaultValue;
+        }
+    }
+
+    private String getSettingString(String key, String defaultValue) {
+        SystemSettingEntity entity = systemSettingMapper.selectById(key);
+        if (entity == null || entity.getSettingValue() == null || entity.getSettingValue().isBlank()) {
+            return defaultValue;
+        }
+        return entity.getSettingValue().trim();
+    }
+
+    private boolean getSettingBoolean(String key, boolean defaultValue) {
+        String value = getSettingString(key, defaultValue ? "1" : "0").toLowerCase(Locale.ROOT);
+        if (Set.of("1", "true", "yes").contains(value)) {
+            return true;
+        }
+        if (Set.of("0", "false", "no").contains(value)) {
+            return false;
+        }
+        return defaultValue;
+    }
+
+    private String getSettingLevel(String key, String defaultValue) {
+        String value = getSettingString(key, defaultValue);
+        SystemSettingSpec spec = SYSTEM_SETTING_SPEC_MAP.get(key);
+        Set<String> allowed = (spec == null ? ALERT_LEVEL_OPTIONS : spec.options()).stream()
+                .map(SettingOption::value)
+                .collect(Collectors.toSet());
+        return allowed.contains(value) ? value : defaultValue;
+    }
+
+    private String resolveAlertProfile(String alertId) {
+        if (alertId == null || alertId.isBlank()) {
+            return "teacher_review";
+        }
+        if (alertId.contains("evaluation") || alertId.contains("eval")) {
+            return "evaluation_confirm";
+        }
+        if (alertId.contains("returned") || alertId.contains("remind-student")) {
+            return "student_resubmit";
+        }
+        if (alertId.contains("form-college") || alertId.contains("form-pending") || alertId.contains("mentor-pending") || alertId.contains("internship-pending")) {
+            return "college_review";
+        }
+        return "teacher_review";
+    }
+
+    private String configuredAlertLevel(String profile, String defaultValue) {
+        return switch (profile) {
+            case "college_review" -> getSettingLevel("college_review_alert_level", defaultValue);
+            case "student_resubmit" -> getSettingLevel("student_resubmit_alert_level", defaultValue);
+            case "evaluation_confirm" -> getSettingLevel("evaluation_confirm_alert_level", defaultValue);
+            default -> getSettingLevel("teacher_review_alert_level", defaultValue);
+        };
+    }
+
+    private boolean reminderEnabled(String profile, boolean defaultValue) {
+        return switch (profile) {
+            case "college_review" -> getSettingBoolean("college_review_remind_enabled", defaultValue);
+            case "student_resubmit" -> getSettingBoolean("student_resubmit_remind_enabled", defaultValue);
+            case "evaluation_confirm" -> getSettingBoolean("evaluation_confirm_remind_enabled", defaultValue);
+            default -> getSettingBoolean("teacher_review_remind_enabled", defaultValue);
+        };
+    }
+
+    private String reminderTitleTemplate(String profile, String defaultValue) {
+        return switch (profile) {
+            case "college_review" -> getSettingString("college_review_reminder_title_template", defaultValue);
+            case "student_resubmit" -> getSettingString("student_resubmit_reminder_title_template", defaultValue);
+            case "evaluation_confirm" -> getSettingString("evaluation_confirm_reminder_title_template", defaultValue);
+            default -> getSettingString("teacher_review_reminder_title_template", defaultValue);
+        };
+    }
+
+    private String reminderContentTemplate(String profile, String defaultValue) {
+        return switch (profile) {
+            case "college_review" -> getSettingString("college_review_reminder_content_template", defaultValue);
+            case "student_resubmit" -> getSettingString("student_resubmit_reminder_content_template", defaultValue);
+            case "evaluation_confirm" -> getSettingString("evaluation_confirm_reminder_content_template", defaultValue);
+            default -> getSettingString("teacher_review_reminder_content_template", defaultValue);
+        };
+    }
+
+    private Map<String, Object> buildRiskAlert(String id,
+                                               String level,
+                                               String category,
+                                               String title,
+                                               String content,
+                                               long overdueDays,
+                                               boolean remindable,
+                                               String remindActionLabel,
+                                               String targetUserId,
+                                               String targetName,
+                                               String link,
+                                               String reminderTitle,
+                                               String reminderContent,
+                                               String reminderLink) {
+        String profile = resolveAlertProfile(id);
+        long displayOverdueDays = overdueDays + 1;
+        Map<String, Object> context = new LinkedHashMap<>();
+        context.put("title", title);
+        context.put("category", category);
+        context.put("content", content);
+        context.put("targetName", Optional.ofNullable(targetName).orElse(""));
+        context.put("overdueDays", displayOverdueDays);
+        context.put("remindActionLabel", Optional.ofNullable(remindActionLabel).orElse(""));
+
+        boolean finalRemindable = remindable && reminderEnabled(profile, true);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", id);
+        payload.put("level", configuredAlertLevel(profile, level));
+        payload.put("category", category);
+        payload.put("title", title);
+        payload.put("content", content);
+        payload.put("overdueDays", displayOverdueDays);
+        payload.put("remindable", finalRemindable);
+        payload.put("remindActionLabel", finalRemindable ? remindActionLabel : "");
+        payload.put("targetUserId", finalRemindable ? targetUserId : null);
+        payload.put("targetName", finalRemindable ? targetName : "");
+        payload.put("link", link);
+        payload.put("reminderTitle", renderTemplate(reminderTitleTemplate(profile, reminderTitle), context));
+        payload.put("reminderContent", renderTemplate(reminderContentTemplate(profile, reminderContent), context));
+        payload.put("reminderLink", reminderLink);
+        return payload;
+    }
+
+    private String renderTemplate(String template, Map<String, Object> context) {
+        String result = Optional.ofNullable(template).orElse("");
+        for (Map.Entry<String, Object> entry : context.entrySet()) {
+            result = result.replace("{" + entry.getKey() + "}", Optional.ofNullable(entry.getValue()).map(String::valueOf).orElse(""));
+        }
+        return result;
+    }
+
+    private List<Map<String, Object>> sortAlerts(List<Map<String, Object>> alerts) {
+        return alerts.stream()
+                .sorted((left, right) -> {
+                    long rightDays = Optional.ofNullable(right.get("overdueDays")).map(Number.class::cast).map(Number::longValue).orElse(0L);
+                    long leftDays = Optional.ofNullable(left.get("overdueDays")).map(Number.class::cast).map(Number::longValue).orElse(0L);
+                    return Long.compare(rightDays, leftDays);
+                })
+                .toList();
+    }
+
+    private List<Map<String, Object>> toCountList(Map<String, Long> counts) {
+        return counts.entrySet().stream()
+                .map(entry -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("label", entry.getKey());
+                    item.put("count", entry.getValue());
+                    return item;
+                })
+                .sorted((left, right) -> Long.compare(((Number) right.get("count")).longValue(), ((Number) left.get("count")).longValue()))
+                .toList();
+    }
+
+    private List<SystemSettingSpec> listSystemSettings() {
+        return SYSTEM_SETTING_SPECS.stream()
+                .sorted(Comparator.comparingInt(SystemSettingSpec::sortNo))
+                .toList();
+    }
+
+    private Map<String, Object> toSystemSettingPayload(SystemSettingSpec spec, SystemSettingEntity entity) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("key", spec.key());
+        payload.put("value", entity == null || entity.getSettingValue() == null || entity.getSettingValue().isBlank() ? spec.defaultValue() : entity.getSettingValue());
+        payload.put("category", spec.category());
+        payload.put("name", spec.name());
+        payload.put("description", spec.description());
+        payload.put("valueType", spec.valueType());
+        payload.put("sortNo", spec.sortNo());
+        payload.put("options", toSettingOptionPayload(spec.options()));
+        payload.put("updatedAt", entity == null ? null : entity.getUpdatedAt());
+        return payload;
+    }
+
+    private List<Map<String, Object>> toSettingOptionPayload(List<SettingOption> options) {
+        return options.stream().map(option -> {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("label", option.label());
+            payload.put("value", option.value());
+            return payload;
+        }).toList();
+    }
+
+    private String normalizeSettingValue(SystemSettingSpec spec, String rawValue) {
+        String value = Optional.ofNullable(rawValue).map(String::trim).orElse("");
+        return switch (spec.valueType()) {
+            case "BOOLEAN" -> Set.of("1", "true", "yes").contains(value.toLowerCase(Locale.ROOT)) ? "1" : "0";
+            case "INTEGER" -> value;
+            case "SELECT" -> value;
+            default -> value;
+        };
+    }
+
+    private boolean isValidSettingValue(SystemSettingSpec spec, String value) {
+        if (spec == null) {
+            return false;
+        }
+        String trimmed = Optional.ofNullable(value).map(String::trim).orElse("");
+        return switch (spec.valueType()) {
+            case "INTEGER" -> isNonNegativeInteger(trimmed);
+            case "BOOLEAN" -> Set.of("1", "0", "true", "false", "yes", "no").contains(trimmed.toLowerCase(Locale.ROOT));
+            case "SELECT" -> spec.options().stream().map(SettingOption::value).anyMatch(option -> option.equals(trimmed));
+            case "TEXT" -> !trimmed.isBlank() && trimmed.length() <= 200;
+            default -> false;
+        };
+    }
+
+    private boolean isNonNegativeInteger(String value) {
+        return value != null && value.trim().matches("^\\d+$");
+    }
+    private List<Map<String, Object>> buildTemplateRanking(List<FormInstanceEntity> forms) {
+        return forms.stream()
+                .collect(Collectors.groupingBy(FormInstanceEntity::getTemplateCode, LinkedHashMap::new, Collectors.toList()))
+                .values().stream()
+                .map(items -> {
+                    FormInstanceEntity sample = items.get(0);
+                    long archived = items.stream().filter(item -> FormStatus.ARCHIVED.getLabel().equals(item.getStatus())).count();
+                    long pending = items.stream().filter(item -> FormStatus.COLLEGE_REVIEWING.getLabel().equals(item.getStatus())).count();
+                    double avgScore = items.stream().map(FormInstanceEntity::getScore).filter(Objects::nonNull).mapToInt(Integer::intValue).average().orElse(0);
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("templateCode", sample.getTemplateCode());
+                    item.put("templateName", sample.getTemplateName());
+                    item.put("category", sample.getCategory());
+                    item.put("total", items.size());
+                    item.put("archived", archived);
+                    item.put("pending", pending);
+                    item.put("averageScore", Math.round(avgScore * 10.0) / 10.0);
+                    return item;
+                })
+                .sorted((left, right) -> Integer.compare(((Number) right.get("total")).intValue(), ((Number) left.get("total")).intValue()))
+                .toList();
+    }
+
+    private List<Map<String, Object>> buildTeacherWorkload(List<TeacherEntity> teachers,
+                                                           List<MentorApplicationEntity> effectiveGuidance,
+                                                           List<FormInstanceEntity> forms,
+                                                           List<EvaluationRecordEntity> evaluations) {
+        Map<String, Set<String>> studentIdsByTeacher = new HashMap<>();
+        for (MentorApplicationEntity item : effectiveGuidance) {
+            studentIdsByTeacher.computeIfAbsent(item.getTeacherId(), key -> new LinkedHashSet<>()).add(item.getStudentId());
+        }
+        return teachers.stream().map(teacher -> {
+                    Set<String> studentIds = studentIdsByTeacher.getOrDefault(teacher.getId(), Set.of());
+                    long archived = forms.stream().filter(item -> studentIds.contains(item.getStudentId()) && FormStatus.ARCHIVED.getLabel().equals(item.getStatus())).count();
+                    long pending = forms.stream().filter(item -> studentIds.contains(item.getStudentId()) && FormStatus.COLLEGE_REVIEWING.getLabel().equals(item.getStatus())).count();
+                    List<EvaluationRecordEntity> teacherEvaluations = evaluations.stream().filter(item -> teacher.getId().equals(item.getTeacherId())).toList();
+                    double averageScore = teacherEvaluations.stream()
+                            .map(item -> item.getCollegeScore() == null ? item.getFinalScore() : item.getCollegeScore())
+                            .filter(Objects::nonNull)
+                            .mapToInt(Integer::intValue)
+                            .average()
+                            .orElse(0);
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("teacherId", teacher.getId());
+                    item.put("teacherName", teacher.getName());
+                    item.put("employeeNo", teacher.getEmployeeNo());
+                    item.put("department", teacher.getDepartment());
+                    item.put("studentCount", studentIds.size());
+                    item.put("archivedCount", archived);
+                    item.put("pendingArchiveCount", pending);
+                    item.put("evaluationCount", teacherEvaluations.size());
+                    item.put("averageScore", Math.round(averageScore * 10.0) / 10.0);
+                    return item;
+                })
+                .sorted((left, right) -> Integer.compare(((Number) right.get("studentCount")).intValue(), ((Number) left.get("studentCount")).intValue()))
+                .toList();
+    }
+
+    private Map<String, Object> buildEvaluationSummary(List<EvaluationRecordEntity> evaluations) {
+        long confirmed = evaluations.stream().filter(item -> Boolean.TRUE.equals(item.getConfirmedByCollege())).count();
+        double averageScore = evaluations.stream()
+                .map(item -> item.getCollegeScore() == null ? item.getFinalScore() : item.getCollegeScore())
+                .filter(Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .average()
+                .orElse(0);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("total", evaluations.size());
+        payload.put("confirmed", confirmed);
+        payload.put("pending", evaluations.size() - confirmed);
+        payload.put("averageScore", Math.round(averageScore * 10.0) / 10.0);
+        return payload;
+    }
+
+    private List<Map<String, Object>> buildScoreDistribution(List<EvaluationRecordEntity> evaluations) {
+        List<int[]> ranges = List.of(
+                new int[]{90, 100},
+                new int[]{80, 89},
+                new int[]{70, 79},
+                new int[]{60, 69},
+                new int[]{0, 59}
+        );
+        List<Map<String, Object>> payload = new ArrayList<>();
+        for (int[] range : ranges) {
+            long count = evaluations.stream()
+                    .map(item -> item.getCollegeScore() == null ? item.getFinalScore() : item.getCollegeScore())
+                    .filter(Objects::nonNull)
+                    .filter(score -> score >= range[0] && score <= range[1])
+                    .count();
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("label", range[0] == 0 ? "60分以下" : range[0] + "-" + range[1]);
+            item.put("count", count);
+            payload.add(item);
+        }
+        return payload;
+    }
+
+    private List<Map<String, Object>> buildOrganizationUsageRanking(List<OrganizationEntity> organizations, List<InternshipApplicationEntity> internships) {
+        Map<String, Long> usage = internships.stream()
+                .collect(Collectors.groupingBy(InternshipApplicationEntity::getOrganizationId, LinkedHashMap::new, Collectors.counting()));
+        return organizations.stream()
+                .map(item -> {
+                    Map<String, Object> payload = new LinkedHashMap<>();
+                    payload.put("organizationId", item.getId());
+                    payload.put("organizationName", item.getName());
+                    payload.put("cooperationStatus", item.getCooperationStatus());
+                    payload.put("count", usage.getOrDefault(item.getId(), 0L));
+                    return payload;
+                })
+                .sorted((left, right) -> Long.compare(((Number) right.get("count")).longValue(), ((Number) left.get("count")).longValue()))
+                .toList();
+    }
+
+    private List<Map<String, Object>> buildMonthlyTrend(List<FormInstanceEntity> forms, List<EvaluationRecordEntity> evaluations) {
+        DateTimeFormatter monthFormatter = DateTimeFormatter.ofPattern("yyyy-MM");
+        List<String> months = new ArrayList<>();
+        for (int index = 5; index >= 0; index--) {
+            months.add(LocalDate.now().minusMonths(index).withDayOfMonth(1).format(monthFormatter));
+        }
+        List<Map<String, Object>> payload = new ArrayList<>();
+        for (String month : months) {
+            long submitted = forms.stream().filter(item -> month.equals(toMonthKey(item.getSubmittedAt(), monthFormatter))).count();
+            long archived = forms.stream().filter(item -> month.equals(toMonthKey(item.getCollegeReviewedAt(), monthFormatter)) && FormStatus.ARCHIVED.getLabel().equals(item.getStatus())).count();
+            long evaluated = evaluations.stream().filter(item -> month.equals(toMonthKey(item.getEvaluatedAt(), monthFormatter))).count();
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("month", month);
+            item.put("submitted", submitted);
+            item.put("archived", archived);
+            item.put("evaluated", evaluated);
+            payload.add(item);
+        }
         return payload;
     }
 
@@ -825,6 +1524,92 @@ public class PhaseOneService {
         return payload;
     }
 
+    public List<Map<String, Object>> systemSettings(LoginUser loginUser) {
+        requireRole(loginUser, RoleType.SUPER_ADMIN);
+        Map<String, SystemSettingEntity> current = systemSettingMapper.selectList(Wrappers.<SystemSettingEntity>lambdaQuery())
+                .stream()
+                .collect(Collectors.toMap(SystemSettingEntity::getSettingKey, item -> item, (left, right) -> left, LinkedHashMap::new));
+        return listSystemSettings().stream().map(spec -> toSystemSettingPayload(spec, current.get(spec.key()))).toList();
+    }
+
+    @Transactional
+    public void saveSystemSettings(LoginUser loginUser, Requests.SystemSettingSaveRequest request) {
+        requireRole(loginUser, RoleType.SUPER_ADMIN);
+        if (request.items() == null || request.items().isEmpty()) {
+            throw new BizException("参数列表不能为空");
+        }
+
+        Map<String, SystemSettingEntity> current = systemSettingMapper.selectList(Wrappers.<SystemSettingEntity>lambdaQuery())
+                .stream()
+                .collect(Collectors.toMap(SystemSettingEntity::getSettingKey, item -> item, (left, right) -> left, LinkedHashMap::new));
+
+        for (Requests.SystemSettingUpdateItem item : request.items()) {
+            SystemSettingSpec spec = SYSTEM_SETTING_SPEC_MAP.get(item.key());
+            if (spec == null) {
+                throw new BizException("系统参数不存在: " + item.key());
+            }
+            if (!isValidSettingValue(spec, item.value())) {
+                throw new BizException(spec.name() + " 配置值不合法");
+            }
+
+            String normalizedValue = normalizeSettingValue(spec, item.value());
+            SystemSettingEntity entity = current.get(spec.key());
+            if (entity == null) {
+                entity = new SystemSettingEntity();
+                entity.setSettingKey(spec.key());
+                current.put(spec.key(), entity);
+            }
+            entity.setSettingValue(normalizedValue);
+            entity.setCategory(spec.category());
+            entity.setName(spec.name());
+            entity.setDescription(spec.description());
+            entity.setUpdatedAt(LocalDateTime.now());
+            if (systemSettingMapper.selectById(spec.key()) == null) {
+                systemSettingMapper.insert(entity);
+            } else {
+                systemSettingMapper.updateById(entity);
+            }
+        }
+        insertAudit("SYSTEM_SETTING", loginUser.id(), "更新系统参数", "更新提醒规则、级别和催办模板配置");
+    }
+    public List<Map<String, Object>> adminFormTemplates(LoginUser loginUser) {
+        requireRole(loginUser, RoleType.SUPER_ADMIN);
+        return listAllTemplates().stream().map(this::toFormTemplatePayload).toList();
+    }
+
+    @Transactional
+    public void createFormTemplate(LoginUser loginUser, Requests.FormTemplateCreateRequest request) {
+        requireRole(loginUser, RoleType.SUPER_ADMIN);
+        if (formTemplateMapper.selectById(request.code()) != null) {
+            throw new BizException("模板编码已存在");
+        }
+        FormTemplateEntity entity = new FormTemplateEntity();
+        entity.setCode(request.code().trim());
+        entity.setCreatedAt(LocalDateTime.now());
+        applyTemplateConfig(entity, request.name(), request.category(), request.description(), request.applicableTypes(), request.fieldSchema(), request.enabled(), request.sortNo());
+        formTemplateMapper.insert(entity);
+        insertAudit("FORM_TEMPLATE", loginUser.id(), "创建表单模板", entity.getCode() + " / " + entity.getName());
+    }
+
+    @Transactional
+    public void updateFormTemplate(LoginUser loginUser, String code, Requests.FormTemplateUpdateRequest request) {
+        requireRole(loginUser, RoleType.SUPER_ADMIN);
+        FormTemplateEntity entity = requireTemplate(code);
+        applyTemplateConfig(entity, request.name(), request.category(), request.description(), request.applicableTypes(), request.fieldSchema(), request.enabled(), request.sortNo());
+        formTemplateMapper.updateById(entity);
+        insertAudit("FORM_TEMPLATE", loginUser.id(), "更新表单模板", entity.getCode() + " / " + entity.getName());
+    }
+
+    @Transactional
+    public void changeFormTemplateStatus(LoginUser loginUser, String code, Requests.StatusToggleRequest request) {
+        requireRole(loginUser, RoleType.SUPER_ADMIN);
+        FormTemplateEntity entity = requireTemplate(code);
+        entity.setEnabled(Boolean.TRUE.equals(request.enabled()));
+        entity.setUpdatedAt(LocalDateTime.now());
+        formTemplateMapper.updateById(entity);
+        insertAudit("FORM_TEMPLATE", loginUser.id(), Boolean.TRUE.equals(request.enabled()) ? "启用表单模板" : "停用表单模板", entity.getCode() + " / " + entity.getName());
+    }
+
     public List<Map<String, Object>> logs(LoginUser loginUser) {
         requireRole(loginUser, RoleType.SUPER_ADMIN);
         return auditLogMapper.selectList(
@@ -840,6 +1625,332 @@ public class PhaseOneService {
             throw new BizException("未登录或登录已失效");
         }
         return loginUser;
+    }
+
+    private List<Map<String, Object>> studentRiskAlerts(LoginUser loginUser) {
+        StudentEntity student = requireStudentByUser(loginUser.id());
+        TeacherEntity teacher = currentEffectiveTeacher(student.getId());
+        UserAccountEntity collegeAdmin = firstCollegeAdminUser(student.getCollegeId());
+        List<FormInstanceEntity> forms = formInstanceMapper.selectList(
+                Wrappers.<FormInstanceEntity>lambdaQuery()
+                        .eq(FormInstanceEntity::getStudentId, student.getId())
+                        .orderByDesc(FormInstanceEntity::getUpdatedAt)
+        );
+
+        List<Map<String, Object>> alerts = new ArrayList<>();
+        for (FormInstanceEntity form : forms) {
+            if (FormStatus.TEACHER_REVIEWING.getLabel().equals(form.getStatus())) {
+                long overdueDays = overdueDays(form.getSubmittedAt(), teacherReviewTimeoutDays());
+                if (overdueDays >= 0 && teacher != null) {
+                    alerts.add(buildRiskAlert(
+                            "student-form-teacher-" + form.getId(),
+                            "warning",
+                            "材料审核",
+                            form.getTemplateName() + " 教师审核已超时",
+                            "已提交 " + (overdueDays + 2) + " 天，可提醒指导教师尽快处理。",
+                            overdueDays,
+                            true,
+                            "催办教师",
+                            teacher.getUserId(),
+                            teacher.getName(),
+                            "/student/tasks",
+                            student.getName() + " 的 " + form.getTemplateName() + " 等待教师审核",
+                            "学生发起催办，请尽快处理待审核材料。",
+                            "/teacher/reviews"
+                    ));
+                }
+            }
+            if (FormStatus.COLLEGE_REVIEWING.getLabel().equals(form.getStatus())) {
+                long overdueDays = overdueDays(form.getTeacherReviewedAt(), collegeReviewTimeoutDays());
+                if (overdueDays >= 0 && collegeAdmin != null) {
+                    alerts.add(buildRiskAlert(
+                            "student-form-college-" + form.getId(),
+                            "warning",
+                            "学院归档",
+                            form.getTemplateName() + " 学院归档已超时",
+                            "教师审核通过后已等待 " + (overdueDays + 2) + " 天，可提醒学院管理员处理。",
+                            overdueDays,
+                            true,
+                            "催办学院",
+                            collegeAdmin.getId(),
+                            collegeAdmin.getName(),
+                            "/student/tasks",
+                            student.getName() + " 的 " + form.getTemplateName() + " 等待学院归档",
+                            "学生发起催办，请尽快完成学院终审与归档。",
+                            "/college/archive"
+                    ));
+                }
+            }
+            if (Set.of(FormStatus.TEACHER_RETURNED.getLabel(), FormStatus.COLLEGE_RETURNED.getLabel()).contains(form.getStatus())) {
+                long overdueDays = overdueDays(form.getUpdatedAt(), studentResubmitTimeoutDays());
+                if (overdueDays >= 0) {
+                    alerts.add(buildRiskAlert(
+                            "student-form-returned-" + form.getId(),
+                            "danger",
+                            "退回未修改",
+                            form.getTemplateName() + " 退回后仍未修改",
+                            "材料已被退回并超过 " + (overdueDays + 2) + " 天未重新提交，请尽快处理。",
+                            overdueDays,
+                            false,
+                            "",
+                            null,
+                            "",
+                            "/student/tasks",
+                            "",
+                            "",
+                            ""
+                    ));
+                }
+            }
+        }
+        return sortAlerts(alerts);
+    }
+
+    private List<Map<String, Object>> teacherRiskAlerts(LoginUser loginUser) {
+        TeacherEntity teacher = requireTeacherByUser(loginUser.id());
+        Set<String> studentIds = mentorApplicationMapper.selectList(
+                Wrappers.<MentorApplicationEntity>lambdaQuery()
+                        .eq(MentorApplicationEntity::getTeacherId, teacher.getId())
+                        .eq(MentorApplicationEntity::getStatus, MentorApplicationStatus.EFFECTIVE.getLabel())
+        ).stream().map(MentorApplicationEntity::getStudentId).collect(Collectors.toSet());
+        List<FormInstanceEntity> forms = listFormsByStudentIds(studentIds);
+        List<EvaluationRecordEntity> evaluations = evaluationRecordMapper.selectList(
+                Wrappers.<EvaluationRecordEntity>lambdaQuery()
+                        .eq(EvaluationRecordEntity::getTeacherId, teacher.getId())
+                        .orderByDesc(EvaluationRecordEntity::getEvaluatedAt)
+        );
+
+        List<Map<String, Object>> alerts = new ArrayList<>();
+        for (FormInstanceEntity form : forms) {
+            StudentEntity student = requireStudent(form.getStudentId());
+            if (FormStatus.TEACHER_REVIEWING.getLabel().equals(form.getStatus())) {
+                long overdueDays = overdueDays(form.getSubmittedAt(), teacherReviewTimeoutDays());
+                if (overdueDays >= 0) {
+                    alerts.add(buildRiskAlert(
+                            "teacher-pending-review-" + form.getId(),
+                            "warning",
+                            "待审核材料",
+                            student.getName() + " 的 " + form.getTemplateName() + " 待审核超时",
+                            "学生材料已等待 " + (overdueDays + 2) + " 天，请尽快完成审核。",
+                            overdueDays,
+                            false,
+                            "",
+                            null,
+                            "",
+                            "/teacher/reviews",
+                            "",
+                            "",
+                            ""
+                    ));
+                }
+            }
+            if (Set.of(FormStatus.TEACHER_RETURNED.getLabel(), FormStatus.COLLEGE_RETURNED.getLabel()).contains(form.getStatus())) {
+                long overdueDays = overdueDays(form.getUpdatedAt(), studentResubmitTimeoutDays());
+                if (overdueDays >= 0) {
+                    alerts.add(buildRiskAlert(
+                            "teacher-remind-student-" + form.getId(),
+                            "danger",
+                            "退回未修改",
+                            student.getName() + " 的 " + form.getTemplateName() + " 退回后未修改",
+                            "该材料退回后已超过 " + (overdueDays + 2) + " 天未修改，可提醒学生处理。",
+                            overdueDays,
+                            true,
+                            "催办学生",
+                            student.getUserId(),
+                            student.getName(),
+                            "/teacher/reviews",
+                            form.getTemplateName() + " 已被催办修改",
+                            "指导教师提醒你尽快修改退回材料并重新提交。",
+                            "/student/tasks"
+                    ));
+                }
+            }
+        }
+
+        for (EvaluationRecordEntity evaluation : evaluations) {
+            if (Boolean.TRUE.equals(evaluation.getSubmittedToCollege()) && !Boolean.TRUE.equals(evaluation.getConfirmedByCollege())) {
+                long overdueDays = overdueDays(evaluation.getEvaluatedAt(), evaluationConfirmTimeoutDays());
+                if (overdueDays >= 0) {
+                    StudentEntity student = requireStudent(evaluation.getStudentId());
+                    UserAccountEntity collegeAdmin = firstCollegeAdminUser(student.getCollegeId());
+                    if (collegeAdmin != null) {
+                        alerts.add(buildRiskAlert(
+                                "teacher-remind-college-eval-" + evaluation.getId(),
+                                "warning",
+                                "评价确认",
+                                student.getName() + " 的实习评价待学院确认",
+                                "评价提交后已超过 " + (overdueDays + 3) + " 天，可提醒学院确认最终成绩。",
+                                overdueDays,
+                                true,
+                                "催办学院",
+                                collegeAdmin.getId(),
+                                collegeAdmin.getName(),
+                                "/teacher/evaluations",
+                                student.getName() + " 的实习评价待学院确认",
+                                "指导教师发起催办，请尽快确认评价结果。",
+                                "/college/evaluations"
+                        ));
+                    }
+                }
+            }
+        }
+        return sortAlerts(alerts);
+    }
+
+    private List<Map<String, Object>> collegeRiskAlerts(LoginUser loginUser) {
+        List<StudentEntity> students = studentMapper.selectList(
+                Wrappers.<StudentEntity>lambdaQuery().eq(StudentEntity::getCollegeId, loginUser.collegeId())
+        );
+        Set<String> studentIds = students.stream().map(StudentEntity::getId).collect(Collectors.toSet());
+        List<FormInstanceEntity> forms = listFormsByStudentIds(studentIds);
+        List<MentorApplicationEntity> mentors = listMentorApplicationsByStudentIds(studentIds);
+        List<InternshipApplicationEntity> internships = listInternshipsByStudentIds(studentIds);
+        List<EvaluationRecordEntity> evaluations = listEvaluationsByStudentIds(studentIds);
+
+        List<Map<String, Object>> alerts = new ArrayList<>();
+        for (MentorApplicationEntity mentor : mentors) {
+            if (MentorApplicationStatus.PENDING_COLLEGE.getLabel().equals(mentor.getStatus())) {
+                long overdueDays = overdueDays(mentor.getTeacherReviewedAt(), collegeReviewTimeoutDays());
+                if (overdueDays >= 0) {
+                    StudentEntity student = requireStudent(mentor.getStudentId());
+                    alerts.add(buildRiskAlert(
+                            "college-mentor-pending-" + mentor.getId(),
+                            "warning",
+                            "指导复核",
+                            student.getName() + " 的指导关系待学院复核",
+                            "教师确认后已超过 " + (overdueDays + 2) + " 天，请尽快完成学院复核。",
+                            overdueDays,
+                            false,
+                            "",
+                            null,
+                            "",
+                            "/college/mentor-relations",
+                            "",
+                            "",
+                            ""
+                    ));
+                }
+            }
+        }
+
+        for (InternshipApplicationEntity internship : internships) {
+            if (InternshipApplicationStatus.PENDING_COLLEGE.getLabel().equals(internship.getStatus())) {
+                long overdueDays = overdueDays(internship.getCreatedAt(), collegeReviewTimeoutDays());
+                if (overdueDays >= 0) {
+                    StudentEntity student = requireStudent(internship.getStudentId());
+                    alerts.add(buildRiskAlert(
+                            "college-internship-pending-" + internship.getId(),
+                            "warning",
+                            "实习审批",
+                            student.getName() + " 的实习申请待学院审批",
+                            "申请已超过 " + (overdueDays + 2) + " 天未处理，请尽快审批。",
+                            overdueDays,
+                            false,
+                            "",
+                            null,
+                            "",
+                            "/college/internship-applications",
+                            "",
+                            "",
+                            ""
+                    ));
+                }
+            }
+        }
+
+        for (FormInstanceEntity form : forms) {
+            StudentEntity student = requireStudent(form.getStudentId());
+            if (FormStatus.TEACHER_REVIEWING.getLabel().equals(form.getStatus())) {
+                long overdueDays = overdueDays(form.getSubmittedAt(), teacherReviewTimeoutDays());
+                TeacherEntity teacher = currentEffectiveTeacher(form.getStudentId());
+                if (overdueDays >= 0 && teacher != null) {
+                    alerts.add(buildRiskAlert(
+                            "college-remind-teacher-form-" + form.getId(),
+                            "warning",
+                            "教师审核",
+                            student.getName() + " 的 " + form.getTemplateName() + " 待教师审核",
+                            "材料提交后已超过 " + (overdueDays + 2) + " 天，可提醒指导教师处理。",
+                            overdueDays,
+                            true,
+                            "催办教师",
+                            teacher.getUserId(),
+                            teacher.getName(),
+                            "/college/archive",
+                            student.getName() + " 的 " + form.getTemplateName() + " 待教师审核",
+                            "学院管理员发起催办，请尽快完成材料审核。",
+                            "/teacher/reviews"
+                    ));
+                }
+            }
+            if (FormStatus.COLLEGE_REVIEWING.getLabel().equals(form.getStatus())) {
+                long overdueDays = overdueDays(form.getTeacherReviewedAt(), collegeReviewTimeoutDays());
+                if (overdueDays >= 0) {
+                    alerts.add(buildRiskAlert(
+                            "college-form-pending-" + form.getId(),
+                            "warning",
+                            "学院归档",
+                            student.getName() + " 的 " + form.getTemplateName() + " 待学院归档",
+                            "教师审核通过后已超过 " + (overdueDays + 2) + " 天，请尽快处理。",
+                            overdueDays,
+                            false,
+                            "",
+                            null,
+                            "",
+                            "/college/archive",
+                            "",
+                            "",
+                            ""
+                    ));
+                }
+            }
+            if (Set.of(FormStatus.TEACHER_RETURNED.getLabel(), FormStatus.COLLEGE_RETURNED.getLabel()).contains(form.getStatus())) {
+                long overdueDays = overdueDays(form.getUpdatedAt(), studentResubmitTimeoutDays());
+                if (overdueDays >= 0) {
+                    alerts.add(buildRiskAlert(
+                            "college-remind-student-form-" + form.getId(),
+                            "danger",
+                            "退回未修改",
+                            student.getName() + " 的 " + form.getTemplateName() + " 退回后未修改",
+                            "材料退回后已超过 " + (overdueDays + 2) + " 天未重新提交，可提醒学生处理。",
+                            overdueDays,
+                            true,
+                            "催办学生",
+                            student.getUserId(),
+                            student.getName(),
+                            "/college/archive",
+                            form.getTemplateName() + " 已被学院催办修改",
+                            "学院管理员提醒你尽快修改退回材料并重新提交。",
+                            "/student/tasks"
+                    ));
+                }
+            }
+        }
+
+        for (EvaluationRecordEntity evaluation : evaluations) {
+            if (Boolean.TRUE.equals(evaluation.getSubmittedToCollege()) && !Boolean.TRUE.equals(evaluation.getConfirmedByCollege())) {
+                long overdueDays = overdueDays(evaluation.getEvaluatedAt(), evaluationConfirmTimeoutDays());
+                if (overdueDays >= 0) {
+                    StudentEntity student = requireStudent(evaluation.getStudentId());
+                    alerts.add(buildRiskAlert(
+                            "college-evaluation-pending-" + evaluation.getId(),
+                            "warning",
+                            "评价确认",
+                            student.getName() + " 的实习评价待学院确认",
+                            "教师提交评价后已超过 " + (overdueDays + 3) + " 天，请尽快确认最终成绩。",
+                            overdueDays,
+                            false,
+                            "",
+                            null,
+                            "",
+                            "/college/evaluations",
+                            "",
+                            "",
+                            ""
+                    ));
+                }
+            }
+        }
+        return sortAlerts(alerts);
     }
 
     private Map<String, Object> studentDashboard(LoginUser loginUser) {
@@ -974,7 +2085,23 @@ public class PhaseOneService {
         payload.put("code", item.getCode());
         payload.put("name", item.getName());
         payload.put("category", item.getCategory());
+        payload.put("description", item.getDescription());
         payload.put("applicableTypes", readList(item.getApplicableTypesJson()));
+        payload.put("fieldSchema", readMapList(item.getFieldSchemaJson()));
+        payload.put("enabled", isTemplateEnabled(item));
+        payload.put("sortNo", Optional.ofNullable(item.getSortNo()).orElse(100));
+        payload.put("createdAt", item.getCreatedAt());
+        payload.put("updatedAt", item.getUpdatedAt());
+        return payload;
+    }
+
+    private Map<String, Object> toTeacherSimple(TeacherEntity teacher) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", teacher.getId());
+        payload.put("name", teacher.getName());
+        payload.put("employeeNo", teacher.getEmployeeNo());
+        payload.put("department", teacher.getDepartment());
+        payload.put("phone", teacher.getPhone());
         return payload;
     }
 
@@ -1041,15 +2168,6 @@ public class PhaseOneService {
         return payload;
     }
 
-    private Map<String, Object> toTeacherSimple(TeacherEntity item) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("id", item.getId());
-        payload.put("name", item.getName());
-        payload.put("employeeNo", item.getEmployeeNo());
-        payload.put("department", item.getDepartment());
-        payload.put("phone", item.getPhone());
-        return payload;
-    }
 
     private void createMessage(String userId, String type, String title, String content, String link) {
         MessageNoticeEntity message = new MessageNoticeEntity();
@@ -1162,6 +2280,124 @@ public class PhaseOneService {
         return entity;
     }
 
+    private void ensureCollegeAdminFormAccess(LoginUser loginUser, FormInstanceEntity entity) {
+        StudentEntity student = requireStudent(entity.getStudentId());
+        if (!Objects.equals(student.getCollegeId(), loginUser.collegeId())) {
+            throw new BizException("无权处理该表单");
+        }
+    }
+
+    private void validateReviewScore(Integer score) {
+        if (score != null && (score < 0 || score > 100)) {
+            throw new BizException("归档评分需在 0 到 100 之间");
+        }
+    }
+
+    private void applyCollegeReview(FormInstanceEntity entity, Boolean approved, Integer score, String comment) {
+        validateReviewScore(score);
+        entity.setCollegeComment(Optional.ofNullable(comment).orElse(""));
+        if (score != null) {
+            entity.setScore(score);
+        }
+        entity.setCollegeReviewedAt(LocalDateTime.now());
+        entity.setUpdatedAt(LocalDateTime.now());
+        entity.setStatus(Boolean.TRUE.equals(approved) ? FormStatus.ARCHIVED.getLabel() : FormStatus.COLLEGE_RETURNED.getLabel());
+    }
+
+    private void notifyStudentAfterCollegeReview(FormInstanceEntity entity, Boolean approved, String comment) {
+        StudentEntity student = requireStudent(entity.getStudentId());
+        createMessage(
+                requireUser(student.getUserId()).getId(),
+                Boolean.TRUE.equals(approved) ? "审核结果" : "退回通知",
+                entity.getTemplateName() + (Boolean.TRUE.equals(approved) ? "已归档" : "被学院退回"),
+                Optional.ofNullable(comment).orElse("请查看学院处理意见。"),
+                "/student/tasks"
+        );
+    }
+
+    private void applyTeacherEvaluation(EvaluationRecordEntity entity, Requests.EvaluationSaveRequest request) {
+        if (request.finalScore() != null && (request.finalScore() < 0 || request.finalScore() > 100)) {
+            throw new BizException("建议成绩需在 0 到 100 之间");
+        }
+        entity.setStageComment(Optional.ofNullable(request.stageComment()).orElse(""));
+        entity.setSummaryComment(Optional.ofNullable(request.summaryComment()).orElse(""));
+        entity.setFinalScore(Optional.ofNullable(request.finalScore()).orElse(90));
+        entity.setDimensionScoresJson(writeJson(normalizeEvaluationDimensions(request.dimensionScores())));
+        entity.setStrengthsComment(Optional.ofNullable(request.strengthsComment()).orElse(""));
+        entity.setImprovementComment(Optional.ofNullable(request.improvementComment()).orElse(""));
+        entity.setCollegeComment("");
+        entity.setCollegeScore(null);
+        entity.setSubmittedToCollege(true);
+        entity.setConfirmedByCollege(false);
+        entity.setEvaluatedAt(LocalDateTime.now());
+        entity.setCollegeConfirmedAt(null);
+    }
+
+    private List<Map<String, Object>> normalizeEvaluationDimensions(List<Map<String, Object>> dimensionScores) {
+        List<Map<String, Object>> rawList = (dimensionScores == null || dimensionScores.isEmpty()) ? defaultEvaluationDimensions() : dimensionScores;
+        List<Map<String, Object>> normalized = new ArrayList<>();
+        Set<String> keys = new HashSet<>();
+
+        for (Map<String, Object> item : rawList) {
+            String key = Optional.ofNullable(item.get("key")).map(String::valueOf).map(String::trim).orElse("");
+            String label = Optional.ofNullable(item.get("label")).map(String::valueOf).map(String::trim).orElse("");
+            String comment = Optional.ofNullable(item.get("comment")).map(String::valueOf).map(String::trim).orElse("");
+            Integer score = parseInteger(item.get("score"));
+            if (key.isBlank() || label.isBlank()) {
+                throw new BizException("评价维度编码和名称不能为空");
+            }
+            if (!keys.add(key)) {
+                throw new BizException("评价维度不能重复");
+            }
+            if (score == null || score < 0 || score > 100) {
+                throw new BizException("评价维度分数需在 0 到 100 之间");
+            }
+            Map<String, Object> normalizedItem = new LinkedHashMap<>();
+            normalizedItem.put("key", key);
+            normalizedItem.put("label", label);
+            normalizedItem.put("score", score);
+            normalizedItem.put("comment", comment);
+            normalized.add(normalizedItem);
+        }
+        return normalized;
+    }
+
+    private List<Map<String, Object>> defaultEvaluationDimensions() {
+        return List.of(
+                new LinkedHashMap<>(Map.of("key", "ethics", "label", "职业素养", "score", 90, "comment", "")),
+                new LinkedHashMap<>(Map.of("key", "teaching", "label", "教学实施", "score", 90, "comment", "")),
+                new LinkedHashMap<>(Map.of("key", "management", "label", "班级管理", "score", 90, "comment", "")),
+                new LinkedHashMap<>(Map.of("key", "reflection", "label", "反思改进", "score", 90, "comment", ""))
+        );
+    }
+
+    private Integer parseInteger(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (Exception exception) {
+            return null;
+        }
+    }
+
+    private void notifyCollegeForEvaluation(EvaluationRecordEntity entity) {
+        StudentEntity student = requireStudent(entity.getStudentId());
+        UserAccountEntity collegeAdmin = userAccountMapper.selectOne(
+                Wrappers.<UserAccountEntity>lambdaQuery()
+                        .eq(UserAccountEntity::getRole, RoleType.COLLEGE_ADMIN.name())
+                        .eq(UserAccountEntity::getCollegeId, student.getCollegeId())
+                        .last("limit 1")
+        );
+        if (collegeAdmin != null) {
+            createMessage(collegeAdmin.getId(), "待办提醒", student.getName() + " 的实习评价待学院确认", "请确认最终成绩与评价意见。", "/college/evaluations");
+        }
+    }
+
     private TeacherEntity currentEffectiveTeacher(String studentId) {
         MentorApplicationEntity relation = mentorApplicationMapper.selectOne(
                 Wrappers.<MentorApplicationEntity>lambdaQuery()
@@ -1179,6 +2415,103 @@ public class PhaseOneService {
         }
         String normalized = value.contains("T") ? value : value.replace(" ", "T");
         return LocalDateTime.parse(normalized, DateTimeFormatter.ISO_DATE_TIME);
+    }
+
+    private String toMonthKey(LocalDateTime value, DateTimeFormatter formatter) {
+        return value == null ? "" : value.format(formatter);
+    }
+
+    private List<FormTemplateEntity> listAllTemplates() {
+        return formTemplateMapper.selectList(
+                Wrappers.<FormTemplateEntity>lambdaQuery()
+                        .orderByAsc(FormTemplateEntity::getSortNo)
+                        .orderByAsc(FormTemplateEntity::getCode)
+        );
+    }
+
+    private boolean isTemplateEnabled(FormTemplateEntity entity) {
+        return !Boolean.FALSE.equals(entity.getEnabled());
+    }
+
+    private void applyTemplateConfig(FormTemplateEntity entity,
+                                     String name,
+                                     String category,
+                                     String description,
+                                     List<String> applicableTypes,
+                                     List<Map<String, Object>> fieldSchema,
+                                     Boolean enabled,
+                                     Integer sortNo) {
+        if (name == null || name.isBlank()) {
+            throw new BizException("模板名称不能为空");
+        }
+        if (category == null || category.isBlank()) {
+            throw new BizException("模板分类不能为空");
+        }
+        if (!Set.of("COMMON", "TEACHING", "HEAD_TEACHER").contains(category)) {
+            throw new BizException("模板分类不合法");
+        }
+        if (applicableTypes == null || applicableTypes.isEmpty()) {
+            throw new BizException("适用实习类型不能为空");
+        }
+        if (fieldSchema == null || fieldSchema.isEmpty()) {
+            throw new BizException("字段配置不能为空");
+        }
+
+        List<String> normalizedTypes = applicableTypes.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(item -> !item.isBlank())
+                .distinct()
+                .toList();
+        if (normalizedTypes.isEmpty() || normalizedTypes.stream().anyMatch(item -> !Set.of("TEACHING", "HEAD_TEACHER").contains(item))) {
+            throw new BizException("适用实习类型不合法");
+        }
+
+        List<Map<String, Object>> normalizedFields = normalizeTemplateFields(fieldSchema);
+        entity.setName(name.trim());
+        entity.setCategory(category.trim());
+        entity.setDescription(Optional.ofNullable(description).map(String::trim).orElse(""));
+        entity.setApplicableTypesJson(writeJson(normalizedTypes));
+        entity.setFieldSchemaJson(writeJson(normalizedFields));
+        entity.setEnabled(!Boolean.FALSE.equals(enabled));
+        entity.setSortNo(Optional.ofNullable(sortNo).orElse(100));
+        entity.setUpdatedAt(LocalDateTime.now());
+    }
+
+    private List<Map<String, Object>> normalizeTemplateFields(List<Map<String, Object>> fieldSchema) {
+        List<Map<String, Object>> normalized = new ArrayList<>();
+        Set<String> keys = new HashSet<>();
+
+        for (Map<String, Object> field : fieldSchema) {
+            String key = Optional.ofNullable(field.get("key")).map(String::valueOf).map(String::trim).orElse("");
+            String label = Optional.ofNullable(field.get("label")).map(String::valueOf).map(String::trim).orElse("");
+            String type = Optional.ofNullable(field.get("type")).map(String::valueOf).map(String::trim).orElse("text");
+            String placeholder = Optional.ofNullable(field.get("placeholder")).map(String::valueOf).map(String::trim).orElse("");
+            boolean required = Boolean.parseBoolean(String.valueOf(Optional.ofNullable(field.get("required")).orElse(false)));
+
+            if (key.isBlank() || !key.matches("[a-zA-Z][a-zA-Z0-9_]{1,31}")) {
+                throw new BizException("字段编码格式不合法");
+            }
+            if (label.isBlank()) {
+                throw new BizException("字段名称不能为空");
+            }
+            if (!Set.of("text", "textarea", "date").contains(type)) {
+                throw new BizException("字段类型仅支持 text、textarea、date");
+            }
+            if (!keys.add(key)) {
+                throw new BizException("字段编码不能重复");
+            }
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("key", key);
+            item.put("label", label);
+            item.put("type", type);
+            item.put("required", required);
+            item.put("placeholder", placeholder);
+            normalized.add(item);
+        }
+
+        return normalized;
     }
 
     private String writeJson(Object value) {

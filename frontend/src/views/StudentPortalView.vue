@@ -1,8 +1,10 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { ElMessage } from "element-plus";
+import { ElMessage } from "element-plus/es/components/message/index";
 import { get, post, put } from "../api/http";
+import FilterTablePanel from "../components/FilterTablePanel.vue";
+import { useFilteredPagination } from "../composables/useFilteredPagination";
 
 const route = useRoute();
 const loading = ref(false);
@@ -38,60 +40,55 @@ const internshipForm = reactive({
 
 const formModel = reactive({
   templateCode: "",
-  content: {
-    title: "",
-    summary: "",
-  },
+  content: {},
   submit: true,
 });
 
-const formKeyword = ref("");
-const messageKeyword = ref("");
-const internshipKeyword = ref("");
-const formPage = ref(1);
-const internshipPage = ref(1);
-const messagePage = ref(1);
 const pageSize = 5;
 
 const section = computed(() => route.meta.section || "dashboard");
 const latestForms = computed(() => forms.value.slice(0, 5));
 const unreadMessages = computed(() => messages.value.filter((item) => !item.read));
-
-const filteredForms = computed(() => {
-  const keyword = formKeyword.value.trim();
-  if (!keyword) return forms.value;
-  return forms.value.filter((item) =>
-    [item.templateName, item.status, item.content?.title, item.content?.summary]
-      .filter(Boolean)
-      .some((value) => String(value).includes(keyword))
-  );
+const selectedTemplate = computed(() => templates.value.find((item) => item.code === formModel.templateCode) || null);
+const templateFields = computed(() => {
+  if (selectedTemplate.value?.fieldSchema?.length) {
+    return selectedTemplate.value.fieldSchema;
+  }
+  return createDefaultFields();
 });
 
-const filteredInternships = computed(() => {
-  const keyword = internshipKeyword.value.trim();
-  if (!keyword) return internshipApplications.value;
-  return internshipApplications.value.filter((item) =>
-    [item.organization?.name, item.position, item.gradeTarget, item.status]
-      .filter(Boolean)
-      .some((value) => String(value).includes(keyword))
-  );
+const {
+  keyword: formKeyword,
+  currentPage: formPage,
+  filteredItems: filteredForms,
+  pagedItems: pagedForms,
+} = useFilteredPagination({
+  source: forms,
+  matcher: (item) => [item.templateName, item.status, ...Object.values(item.content || {})],
+  pageSize,
 });
 
-const filteredMessages = computed(() => {
-  const keyword = messageKeyword.value.trim();
-  if (!keyword) return messages.value;
-  return messages.value.filter((item) =>
-    [item.type, item.title, item.content].filter(Boolean).some((value) => String(value).includes(keyword))
-  );
+const {
+  keyword: internshipKeyword,
+  currentPage: internshipPage,
+  filteredItems: filteredInternships,
+  pagedItems: pagedInternships,
+} = useFilteredPagination({
+  source: internshipApplications,
+  matcher: (item) => [item.organization?.name, item.position, item.gradeTarget, item.status],
+  pageSize,
 });
 
-const pagedForms = computed(() => filteredForms.value.slice((formPage.value - 1) * pageSize, formPage.value * pageSize));
-const pagedInternships = computed(() =>
-  filteredInternships.value.slice((internshipPage.value - 1) * pageSize, internshipPage.value * pageSize)
-);
-const pagedMessages = computed(() =>
-  filteredMessages.value.slice((messagePage.value - 1) * pageSize, messagePage.value * pageSize)
-);
+const {
+  keyword: messageKeyword,
+  currentPage: messagePage,
+  filteredItems: filteredMessages,
+  pagedItems: pagedMessages,
+} = useFilteredPagination({
+  source: messages,
+  matcher: (item) => [item.type, item.title, item.content],
+  pageSize,
+});
 
 async function loadAll() {
   loading.value = true;
@@ -152,9 +149,28 @@ function resetInternshipForm() {
 function resetFormModel() {
   editingFormId.value = "";
   formModel.templateCode = "";
-  formModel.content.title = "";
-  formModel.content.summary = "";
+  syncFormContent([]);
   formModel.submit = true;
+}
+
+function createDefaultFields() {
+  return [
+    { key: "title", label: "标题", type: "text", required: true, placeholder: "请输入标题" },
+    { key: "summary", label: "内容摘要", type: "textarea", required: true, placeholder: "请输入内容摘要" },
+  ];
+}
+
+function syncFormContent(schema, source = {}) {
+  const next = {};
+  (schema.length ? schema : createDefaultFields()).forEach((field) => {
+    next[field.key] = source[field.key] ?? "";
+  });
+  Object.keys(formModel.content).forEach((key) => delete formModel.content[key]);
+  Object.assign(formModel.content, next);
+}
+
+function handleTemplateChange() {
+  syncFormContent(templateFields.value);
 }
 
 async function submitMentorApplication() {
@@ -165,7 +181,7 @@ async function submitMentorApplication() {
 
   try {
     await post("/mentor-applications", mentorForm);
-    ElMessage.success("指导教师申请已提交");
+    ElMessage.success("指导教师申请已提交。");
     mentorDialogVisible.value = false;
     resetMentorForm();
     await loadAll();
@@ -176,7 +192,7 @@ async function submitMentorApplication() {
 
 async function submitInternshipApplication() {
   if (!internshipForm.organizationId || !internshipForm.position || !internshipForm.gradeTarget) {
-    ElMessage.warning("请完整填写实习单位、岗位和年级。");
+    ElMessage.warning("请完整填写实习单位、岗位和年级信息。");
     return;
   }
 
@@ -187,7 +203,7 @@ async function submitInternshipApplication() {
 
   try {
     await post("/internship-applications", internshipForm);
-    ElMessage.success("实习申请已提交");
+    ElMessage.success("实习申请已提交。");
     internshipDialogVisible.value = false;
     resetInternshipForm();
     await loadAll();
@@ -199,8 +215,8 @@ async function submitInternshipApplication() {
 function editExistingForm(row) {
   editingFormId.value = row.id;
   formModel.templateCode = row.templateCode;
-  formModel.content.title = row.content?.title || "";
-  formModel.content.summary = row.content?.summary || "";
+  const template = templates.value.find((item) => item.code === row.templateCode);
+  syncFormContent(template?.fieldSchema || createDefaultFields(), row.content || {});
   formModel.submit = true;
   formDialogVisible.value = true;
 }
@@ -211,28 +227,28 @@ async function submitForm() {
     return;
   }
 
-  if (!formModel.content.title.trim() || !formModel.content.summary.trim()) {
-    ElMessage.warning("请填写表单标题和摘要。");
-    return;
+  for (const field of templateFields.value) {
+    const value = `${formModel.content[field.key] ?? ""}`.trim();
+    if (field.required && !value) {
+      ElMessage.warning(`请填写${field.label}。`);
+      return;
+    }
   }
 
   try {
     const payload = {
       templateCode: formModel.templateCode,
-      content: {
-        title: formModel.content.title,
-        summary: formModel.content.summary,
-      },
+      content: { ...formModel.content },
       submit: formModel.submit,
       attachments: [],
     };
 
     if (editingFormId.value) {
       await put(`/forms/${editingFormId.value}`, payload);
-      ElMessage.success("表单已更新");
+      ElMessage.success("表单已更新。");
     } else {
       await post("/forms", payload);
-      ElMessage.success("表单已创建");
+      ElMessage.success("表单已创建。");
     }
 
     formDialogVisible.value = false;
@@ -252,12 +268,6 @@ async function markRead(row) {
   }
 }
 
-watch([formKeyword, internshipKeyword, messageKeyword], () => {
-  formPage.value = 1;
-  internshipPage.value = 1;
-  messagePage.value = 1;
-});
-
 onMounted(loadAll);
 watch(() => route.path, loadAll);
 </script>
@@ -268,7 +278,7 @@ watch(() => route.path, loadAll);
       <div class="page-header">
         <div>
           <h2>学生工作台</h2>
-          <div class="subtle">查看指导关系、实习状态、待办任务与消息提醒。</div>
+          <div class="subtle">查看指导关系、实习状态、待办任务和消息提醒。</div>
         </div>
       </div>
       <div class="metric-grid">
@@ -280,7 +290,7 @@ watch(() => route.path, loadAll);
 
       <div class="panel-card">
         <div class="page-header">
-          <h2 style="font-size:20px">最近表单</h2>
+          <h2 style="font-size: 20px">最近表单</h2>
           <el-button type="primary" color="#0f766e" @click="formDialogVisible = true; resetFormModel()">新建表单</el-button>
         </div>
         <el-table :data="latestForms" style="margin-top: 16px">
@@ -295,7 +305,7 @@ watch(() => route.path, loadAll);
 
       <div class="panel-card">
         <div class="page-header">
-          <h2 style="font-size:20px">未读消息</h2>
+          <h2 style="font-size: 20px">未读消息</h2>
           <el-tag type="warning">{{ unreadMessages.length }} 条</el-tag>
         </div>
         <el-table :data="unreadMessages" style="margin-top: 16px">
@@ -337,14 +347,17 @@ watch(() => route.path, loadAll);
       <div class="page-header">
         <div>
           <h2>实习申请</h2>
-          <div class="subtle">选择实习单位并提交学院审批，学院可登记单位外部确认结果。</div>
+          <div class="subtle">选择实习单位并提交学院审批，学院会同步登记单位确认结果。</div>
         </div>
         <el-button type="primary" color="#0f766e" @click="internshipDialogVisible = true">新建申请</el-button>
       </div>
-      <div class="panel-card">
-        <div class="toolbar">
-          <el-input v-model="internshipKeyword" placeholder="筛选单位、岗位、状态" clearable style="max-width: 320px" />
-        </div>
+      <FilterTablePanel
+        v-model:keyword="internshipKeyword"
+        v-model:current-page="internshipPage"
+        placeholder="筛选单位、岗位、状态"
+        :total="filteredInternships.length"
+        :page-size="pageSize"
+      >
         <el-table :data="pagedInternships" style="margin-top: 16px">
           <el-table-column label="实习单位" min-width="180">
             <template #default="{ row }">{{ row.organization?.name }}</template>
@@ -358,29 +371,24 @@ watch(() => route.path, loadAll);
             <el-empty description="暂无实习申请记录" />
           </template>
         </el-table>
-        <el-pagination
-          v-if="filteredInternships.length > pageSize"
-          v-model:current-page="internshipPage"
-          layout="prev, pager, next"
-          :page-size="pageSize"
-          :total="filteredInternships.length"
-          style="margin-top: 16px; justify-content: flex-end"
-        />
-      </div>
+      </FilterTablePanel>
     </template>
 
     <template v-else-if="section === 'forms'">
       <div class="page-header">
         <div>
           <h2>核心表单</h2>
-          <div class="subtle">统一承载通用表单与任课、班主任核心表单，一期先走统一状态流转。</div>
+          <div class="subtle">统一承载通用表单以及任课、班主任实习核心表单，按业务流程逐级流转。</div>
         </div>
         <el-button type="primary" color="#0f766e" @click="formDialogVisible = true; resetFormModel()">新建表单</el-button>
       </div>
-      <div class="panel-card">
-        <div class="toolbar">
-          <el-input v-model="formKeyword" placeholder="筛选表单、状态、标题" clearable style="max-width: 320px" />
-        </div>
+      <FilterTablePanel
+        v-model:keyword="formKeyword"
+        v-model:current-page="formPage"
+        placeholder="筛选表单、状态、标题"
+        :total="filteredForms.length"
+        :page-size="pageSize"
+      >
         <el-table :data="pagedForms" style="margin-top: 16px">
           <el-table-column prop="templateName" label="表单名称" min-width="160" />
           <el-table-column prop="category" label="类别" width="120" />
@@ -398,28 +406,23 @@ watch(() => route.path, loadAll);
             <el-empty description="暂无表单记录" />
           </template>
         </el-table>
-        <el-pagination
-          v-if="filteredForms.length > pageSize"
-          v-model:current-page="formPage"
-          layout="prev, pager, next"
-          :page-size="pageSize"
-          :total="filteredForms.length"
-          style="margin-top: 16px; justify-content: flex-end"
-        />
-      </div>
+      </FilterTablePanel>
     </template>
 
     <template v-else-if="section === 'messages'">
       <div class="page-header">
         <div>
           <h2>消息中心</h2>
-          <div class="subtle">一期包含待办提醒、审核结果与退回通知。</div>
+          <div class="subtle">集中查看待办提醒、审核结果和退回通知。</div>
         </div>
       </div>
-      <div class="panel-card">
-        <div class="toolbar">
-          <el-input v-model="messageKeyword" placeholder="筛选类型、标题、内容" clearable style="max-width: 320px" />
-        </div>
+      <FilterTablePanel
+        v-model:keyword="messageKeyword"
+        v-model:current-page="messagePage"
+        placeholder="筛选类型、标题、内容"
+        :total="filteredMessages.length"
+        :page-size="pageSize"
+      >
         <el-table :data="pagedMessages" style="margin-top: 16px">
           <el-table-column prop="type" label="类型" width="120" />
           <el-table-column prop="title" label="标题" min-width="220" />
@@ -429,36 +432,43 @@ watch(() => route.path, loadAll);
           </el-table-column>
           <el-table-column label="操作" width="120">
             <template #default="{ row }">
-              <el-button link type="primary" @click="markRead(row)">标记已读</el-button>
+              <el-button v-if="!row.read" link type="primary" @click="markRead(row)">标记已读</el-button>
+              <span v-else class="subtle">已处理</span>
             </template>
           </el-table-column>
           <template #empty>
             <el-empty description="暂无消息" />
           </template>
         </el-table>
-        <el-pagination
-          v-if="filteredMessages.length > pageSize"
-          v-model:current-page="messagePage"
-          layout="prev, pager, next"
-          :page-size="pageSize"
-          :total="filteredMessages.length"
-          style="margin-top: 16px; justify-content: flex-end"
-        />
-      </div>
+      </FilterTablePanel>
     </template>
 
     <template v-else-if="section === 'results'">
       <div class="page-header">
         <div>
           <h2>结果查看</h2>
-          <div class="subtle">查看指导教师评价与学院最终确认结果。</div>
+          <div class="subtle">查看指导教师评价和学院最终确认结果。</div>
         </div>
       </div>
       <div class="panel-card">
         <el-table :data="evaluations">
+          <el-table-column label="指导教师" width="140">
+            <template #default="{ row }">{{ row.teacher?.name || "-" }}</template>
+          </el-table-column>
+          <el-table-column label="评价维度" min-width="260">
+            <template #default="{ row }">
+              <el-space wrap>
+                <el-tag v-for="item in row.dimensionScores || []" :key="`${row.id}-${item.key}`" type="success">{{ item.label }} {{ item.score }}</el-tag>
+              </el-space>
+            </template>
+          </el-table-column>
           <el-table-column label="阶段评价" prop="stageComment" min-width="220" />
           <el-table-column label="总结评价" prop="summaryComment" min-width="260" />
+          <el-table-column label="优点亮点" prop="strengthsComment" min-width="180" />
+          <el-table-column label="改进建议" prop="improvementComment" min-width="180" />
+          <el-table-column label="教师建议成绩" prop="recommendedScore" width="120" />
           <el-table-column label="最终成绩" prop="finalScore" width="120" />
+          <el-table-column label="学院意见" prop="collegeComment" min-width="220" />
           <el-table-column label="学院确认" width="120">
             <template #default="{ row }">{{ row.confirmedByCollege ? "已确认" : "待确认" }}</template>
           </el-table-column>
@@ -472,7 +482,7 @@ watch(() => route.path, loadAll);
     <el-dialog v-model="mentorDialogVisible" title="发起指导教师申请" width="520px">
       <el-form label-position="top">
         <el-form-item label="选择教师">
-          <el-select v-model="mentorForm.teacherId" placeholder="请选择指导教师" style="width:100%">
+          <el-select v-model="mentorForm.teacherId" placeholder="请选择指导教师" style="width: 100%">
             <el-option v-for="item in teachers" :key="item.id" :label="`${item.name} / ${item.employeeNo}`" :value="item.id" />
           </el-select>
         </el-form-item>
@@ -489,7 +499,7 @@ watch(() => route.path, loadAll);
     <el-dialog v-model="internshipDialogVisible" title="提交实习申请" width="640px">
       <el-form label-position="top">
         <el-form-item label="实习单位">
-          <el-select v-model="internshipForm.organizationId" placeholder="请选择实习单位" style="width:100%">
+          <el-select v-model="internshipForm.organizationId" placeholder="请选择实习单位" style="width: 100%">
             <el-option v-for="item in organizations" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
         </el-form-item>
@@ -527,19 +537,35 @@ watch(() => route.path, loadAll);
       </template>
     </el-dialog>
 
-    <el-dialog v-model="formDialogVisible" :title="editingFormId ? '编辑表单' : '新建表单'" width="640px">
+    <el-dialog v-model="formDialogVisible" :title="editingFormId ? '编辑表单' : '新建表单'" width="720px">
       <el-form label-position="top">
         <el-form-item label="表单模板">
-          <el-select v-model="formModel.templateCode" placeholder="请选择模板" style="width:100%">
+          <el-select v-model="formModel.templateCode" placeholder="请选择模板" style="width: 100%" @change="handleTemplateChange">
             <el-option v-for="item in templates" :key="item.code" :label="`${item.name} (${item.category})`" :value="item.code" />
           </el-select>
         </el-form-item>
-        <el-form-item label="标题">
-          <el-input v-model="formModel.content.title" />
-        </el-form-item>
-        <el-form-item label="内容摘要">
-          <el-input v-model="formModel.content.summary" type="textarea" :rows="5" />
-        </el-form-item>
+        <div v-if="selectedTemplate?.description" class="subtle" style="margin: -6px 0 14px">{{ selectedTemplate.description }}</div>
+        <template v-for="field in templateFields" :key="field.key">
+          <el-form-item :label="field.label">
+            <el-input
+              v-if="field.type === 'text'"
+              v-model="formModel.content[field.key]"
+              :placeholder="field.placeholder || `请输入${field.label}`"
+            />
+            <el-input
+              v-else-if="field.type === 'textarea'"
+              v-model="formModel.content[field.key]"
+              type="textarea"
+              :rows="5"
+              :placeholder="field.placeholder || `请输入${field.label}`"
+            />
+            <el-input
+              v-else
+              v-model="formModel.content[field.key]"
+              :placeholder="field.placeholder || 'YYYY-MM-DD'"
+            />
+          </el-form-item>
+        </template>
         <el-form-item label="提交方式">
           <el-switch v-model="formModel.submit" inline-prompt active-text="提交审核" inactive-text="保存草稿" />
         </el-form-item>

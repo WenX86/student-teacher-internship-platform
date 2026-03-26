@@ -1,8 +1,10 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { ElMessage } from "element-plus";
+import { ElMessage } from "element-plus/es/components/message/index";
 import { get, post } from "../api/http";
+import FilterTablePanel from "../components/FilterTablePanel.vue";
+import { useFilteredPagination } from "../composables/useFilteredPagination";
 
 const route = useRoute();
 const loading = ref(false);
@@ -12,6 +14,7 @@ const forms = ref([]);
 const guidanceRecords = ref([]);
 const evaluations = ref([]);
 const messages = ref([]);
+const alerts = ref([]);
 
 const mentorReviewDialog = ref(false);
 const formReviewDialog = ref(false);
@@ -34,65 +37,73 @@ const evaluationForm = reactive({
   stageComment: "",
   summaryComment: "",
   finalScore: 90,
+  dimensionScores: [],
+  strengthsComment: "",
+  improvementComment: "",
 });
 
-const reviewKeyword = ref("");
-const guidanceKeyword = ref("");
-const messageKeyword = ref("");
-const reviewPage = ref(1);
-const guidancePage = ref(1);
-const messagePage = ref(1);
 const pageSize = 5;
 
 const section = computed(() => route.meta.section || "dashboard");
-const activeStudents = computed(() =>
-  mentorApplications.value.filter((item) => item.status === "已生效").map((item) => item.student)
-);
-const pendingMentorApplications = computed(() =>
-  mentorApplications.value.filter((item) => item.status === "待教师确认")
-);
+const activeStudents = computed(() => mentorApplications.value.filter((item) => item.status === "已生效").map((item) => item.student));
+const pendingMentorApplications = computed(() => mentorApplications.value.filter((item) => item.status === "待教师确认"));
+const reviewableForms = computed(() => forms.value.filter((item) => item.status === "教师审核中"));
 
-const filteredReviewForms = computed(() => {
-  const keyword = reviewKeyword.value.trim();
-  const base = forms.value.filter((item) => item.status === "教师审核中");
-  if (!keyword) return base;
-  return base.filter((item) =>
-    [item.studentName, item.templateName, item.content?.summary].filter(Boolean).some((value) => String(value).includes(keyword))
-  );
+const {
+  keyword: reviewKeyword,
+  currentPage: reviewPage,
+  filteredItems: filteredReviewForms,
+  pagedItems: pagedReviewForms,
+} = useFilteredPagination({
+  source: reviewableForms,
+  matcher: (item) => [item.studentName, item.templateName, item.content?.summary],
+  pageSize,
 });
 
-const filteredGuidanceRecords = computed(() => {
-  const keyword = guidanceKeyword.value.trim();
-  if (!keyword) return guidanceRecords.value;
-  return guidanceRecords.value.filter((item) =>
-    [item.student?.name, item.problem, item.advice, item.followUp].filter(Boolean).some((value) => String(value).includes(keyword))
-  );
+const {
+  keyword: guidanceKeyword,
+  currentPage: guidancePage,
+  filteredItems: filteredGuidanceRecords,
+  pagedItems: pagedGuidanceRecords,
+} = useFilteredPagination({
+  source: guidanceRecords,
+  matcher: (item) => [item.student?.name, item.problem, item.advice, item.followUp],
+  pageSize,
 });
 
-const filteredMessages = computed(() => {
-  const keyword = messageKeyword.value.trim();
-  if (!keyword) return messages.value;
-  return messages.value.filter((item) =>
-    [item.type, item.title, item.content].filter(Boolean).some((value) => String(value).includes(keyword))
-  );
+const {
+  keyword: messageKeyword,
+  currentPage: messagePage,
+  filteredItems: filteredMessages,
+  pagedItems: pagedMessages,
+} = useFilteredPagination({
+  source: messages,
+  matcher: (item) => [item.type, item.title, item.content],
+  pageSize,
 });
 
-const pagedReviewForms = computed(() => filteredReviewForms.value.slice((reviewPage.value - 1) * pageSize, reviewPage.value * pageSize));
-const pagedGuidanceRecords = computed(() =>
-  filteredGuidanceRecords.value.slice((guidancePage.value - 1) * pageSize, guidancePage.value * pageSize)
-);
-const pagedMessages = computed(() => filteredMessages.value.slice((messagePage.value - 1) * pageSize, messagePage.value * pageSize));
+const {
+  keyword: alertKeyword,
+  currentPage: alertPage,
+  filteredItems: filteredAlerts,
+  pagedItems: pagedAlerts,
+} = useFilteredPagination({
+  source: alerts,
+  matcher: (item) => [item.category, item.title, item.content, item.targetName, item.level],
+  pageSize,
+});
 
 async function loadAll() {
   loading.value = true;
   try {
-    const [dashboardData, mentorData, formData, guidanceData, evaluationData, messageData] = await Promise.all([
+    const [dashboardData, mentorData, formData, guidanceData, evaluationData, messageData, alertData] = await Promise.all([
       get("/dashboard"),
       get("/mentor-applications"),
       get("/forms"),
       get("/guidance-records"),
       get("/evaluations"),
       get("/messages"),
+      get("/risk-alerts"),
     ]);
     dashboard.value = dashboardData;
     mentorApplications.value = mentorData;
@@ -100,6 +111,7 @@ async function loadAll() {
     guidanceRecords.value = guidanceData;
     evaluations.value = evaluationData;
     messages.value = messageData;
+    alerts.value = alertData;
   } catch (error) {
     ElMessage.error(error.message);
   } finally {
@@ -117,7 +129,7 @@ function openMentorReview(row) {
 async function submitMentorReview() {
   try {
     await post(`/mentor-applications/${currentRow.value.id}/teacher-review`, mentorReviewForm);
-    ElMessage.success("指导申请处理完成");
+    ElMessage.success("指导申请处理完成。");
     mentorReviewDialog.value = false;
     await loadAll();
   } catch (error) {
@@ -140,7 +152,7 @@ async function submitFormReview() {
   }
   try {
     await post(`/forms/${currentRow.value.id}/teacher-review`, formReviewForm);
-    ElMessage.success("表单审核完成");
+    ElMessage.success("表单审核完成。");
     formReviewDialog.value = false;
     await loadAll();
   } catch (error) {
@@ -159,7 +171,7 @@ async function submitGuidanceRecord() {
   }
   try {
     await post("/guidance-records", guidanceForm);
-    ElMessage.success("指导记录已保存");
+    ElMessage.success("指导记录已保存。");
     guidanceDialog.value = false;
     guidanceForm.studentId = "";
     guidanceForm.guidanceAt = "";
@@ -173,11 +185,23 @@ async function submitGuidanceRecord() {
   }
 }
 
+function createDefaultEvaluationDimensions() {
+  return [
+    { key: "ethics", label: "职业素养", score: 90, comment: "" },
+    { key: "teaching", label: "教学实施", score: 90, comment: "" },
+    { key: "management", label: "班级管理", score: 90, comment: "" },
+    { key: "reflection", label: "反思改进", score: 90, comment: "" },
+  ];
+}
+
 function openEvaluationDialog(row) {
   evaluationForm.studentId = row?.student?.id || row?.id || "";
   evaluationForm.stageComment = row?.stageComment || "";
   evaluationForm.summaryComment = row?.summaryComment || "";
-  evaluationForm.finalScore = row?.finalScore || 90;
+  evaluationForm.finalScore = row?.recommendedScore || row?.finalScore || 90;
+  evaluationForm.dimensionScores = (row?.dimensionScores?.length ? row.dimensionScores : createDefaultEvaluationDimensions()).map((item) => ({ ...item }));
+  evaluationForm.strengthsComment = row?.strengthsComment || "";
+  evaluationForm.improvementComment = row?.improvementComment || "";
   evaluationDialog.value = true;
 }
 
@@ -186,10 +210,30 @@ async function submitEvaluation() {
     ElMessage.warning("请选择学生。");
     return;
   }
+  if (evaluationForm.finalScore < 0 || evaluationForm.finalScore > 100) {
+    ElMessage.warning("建议成绩需在 0 到 100 之间。");
+    return;
+  }
+  for (const item of evaluationForm.dimensionScores) {
+    if (item.score < 0 || item.score > 100) {
+      ElMessage.warning(`${item.label}分数需在 0 到 100 之间。`);
+      return;
+    }
+  }
   try {
     await post("/evaluations", evaluationForm);
-    ElMessage.success("评价已提交学院汇总");
+    ElMessage.success("评价已提交学院确认。");
     evaluationDialog.value = false;
+    await loadAll();
+  } catch (error) {
+    ElMessage.error(error.message);
+  }
+}
+
+async function sendReminder(row) {
+  try {
+    await post(`/risk-alerts/${row.id}/remind`, {});
+    ElMessage.success(row.remindActionLabel ? `${row.remindActionLabel}已发送。` : "催办提醒已发送。");
     await loadAll();
   } catch (error) {
     ElMessage.error(error.message);
@@ -205,12 +249,6 @@ async function markRead(row) {
   }
 }
 
-watch([reviewKeyword, guidanceKeyword, messageKeyword], () => {
-  reviewPage.value = 1;
-  guidancePage.value = 1;
-  messagePage.value = 1;
-});
-
 onMounted(loadAll);
 watch(() => route.path, loadAll);
 </script>
@@ -221,7 +259,7 @@ watch(() => route.path, loadAll);
       <div class="page-header">
         <div>
           <h2>教师工作台</h2>
-          <div class="subtle">聚合待确认指导申请、待审核材料与学生整体完成率。</div>
+          <div class="subtle">查看待确认指导申请、待审核材料和负责学生的整体进度。</div>
         </div>
       </div>
       <div class="metric-grid">
@@ -231,7 +269,7 @@ watch(() => route.path, loadAll);
         <div class="metric-card"><h4>材料完成率</h4><strong>{{ dashboard.completionRate || 0 }}%</strong></div>
       </div>
       <div class="panel-card">
-        <div class="page-header"><h2 style="font-size:20px">已生效学生名单</h2></div>
+        <div class="page-header"><h2 style="font-size: 20px">已生效学生名单</h2></div>
         <el-table :data="activeStudents" style="margin-top: 16px">
           <el-table-column prop="name" label="学生" />
           <el-table-column prop="studentNo" label="学号" />
@@ -246,7 +284,7 @@ watch(() => route.path, loadAll);
       <div class="page-header">
         <div>
           <h2>待确认指导申请</h2>
-          <div class="subtle">教师仅确认或驳回申请，最终生效仍由学院管理员复核。</div>
+          <div class="subtle">教师可确认或驳回申请，最终仍需学院复核生效。</div>
         </div>
       </div>
       <div class="panel-card">
@@ -268,11 +306,16 @@ watch(() => route.path, loadAll);
       <div class="page-header">
         <div>
           <h2>材料审核</h2>
-          <div class="subtle">一期表单统一进入教师审核链路，再流转到学院归档。</div>
+          <div class="subtle">学生表单统一进入教师审核链路，审核通过后再流转学院归档。</div>
         </div>
       </div>
-      <div class="panel-card">
-        <div class="toolbar"><el-input v-model="reviewKeyword" placeholder="筛选学生、表单、摘要" clearable style="max-width: 320px" /></div>
+      <FilterTablePanel
+        v-model:keyword="reviewKeyword"
+        v-model:current-page="reviewPage"
+        placeholder="筛选学生、表单、摘要"
+        :total="filteredReviewForms.length"
+        :page-size="pageSize"
+      >
         <el-table :data="pagedReviewForms" style="margin-top: 16px">
           <el-table-column prop="studentName" label="学生" width="120" />
           <el-table-column prop="templateName" label="表单" min-width="150" />
@@ -285,27 +328,24 @@ watch(() => route.path, loadAll);
           </el-table-column>
           <template #empty><el-empty description="暂无待审核表单" /></template>
         </el-table>
-        <el-pagination
-          v-if="filteredReviewForms.length > pageSize"
-          v-model:current-page="reviewPage"
-          layout="prev, pager, next"
-          :page-size="pageSize"
-          :total="filteredReviewForms.length"
-          style="margin-top: 16px; justify-content: flex-end"
-        />
-      </div>
+      </FilterTablePanel>
     </template>
 
     <template v-else-if="section === 'guidance'">
       <div class="page-header">
         <div>
           <h2>指导记录</h2>
-          <div class="subtle">登记线上线下指导、问题分析与整改建议。</div>
+          <div class="subtle">登记线上线下指导情况、问题分析和整改建议。</div>
         </div>
         <el-button type="primary" color="#0f766e" @click="guidanceDialog = true">新增指导记录</el-button>
       </div>
-      <div class="panel-card">
-        <div class="toolbar"><el-input v-model="guidanceKeyword" placeholder="筛选学生、问题、建议" clearable style="max-width: 320px" /></div>
+      <FilterTablePanel
+        v-model:keyword="guidanceKeyword"
+        v-model:current-page="guidancePage"
+        placeholder="筛选学生、问题、建议"
+        :total="filteredGuidanceRecords.length"
+        :page-size="pageSize"
+      >
         <el-table :data="pagedGuidanceRecords" style="margin-top: 16px">
           <el-table-column label="学生" min-width="120"><template #default="{ row }">{{ row.student?.name }}</template></el-table-column>
           <el-table-column prop="guidanceAt" label="指导时间" width="180" />
@@ -315,31 +355,33 @@ watch(() => route.path, loadAll);
           <el-table-column prop="followUp" label="跟进结果" min-width="180" />
           <template #empty><el-empty description="暂无指导记录" /></template>
         </el-table>
-        <el-pagination
-          v-if="filteredGuidanceRecords.length > pageSize"
-          v-model:current-page="guidancePage"
-          layout="prev, pager, next"
-          :page-size="pageSize"
-          :total="filteredGuidanceRecords.length"
-          style="margin-top: 16px; justify-content: flex-end"
-        />
-      </div>
+      </FilterTablePanel>
     </template>
 
     <template v-else-if="section === 'evaluations'">
       <div class="page-header">
         <div>
           <h2>评价管理</h2>
-          <div class="subtle">填写阶段评价与总结评价，提交学院汇总确认最终成绩。</div>
+          <div class="subtle">填写多维评价、优点亮点和改进建议，并提交学院确认最终成绩。</div>
         </div>
-        <el-button type="primary" color="#0f766e" @click="openEvaluationDialog(activeStudents[0])">新增评价</el-button>
+        <el-button type="primary" color="#0f766e" :disabled="!activeStudents.length" @click="openEvaluationDialog(activeStudents[0])">新增评价</el-button>
       </div>
       <div class="panel-card">
         <el-table :data="evaluations">
           <el-table-column label="学生" width="120"><template #default="{ row }">{{ row.student?.name }}</template></el-table-column>
-          <el-table-column prop="stageComment" label="阶段评价" min-width="180" />
-          <el-table-column prop="summaryComment" label="总结评价" min-width="220" />
-          <el-table-column prop="finalScore" label="成绩" width="100" />
+          <el-table-column label="评价维度" min-width="260">
+            <template #default="{ row }">
+              <el-space wrap>
+                <el-tag v-for="item in row.dimensionScores || []" :key="`${row.id}-${item.key}`" type="success">{{ item.label }} {{ item.score }}</el-tag>
+              </el-space>
+            </template>
+          </el-table-column>
+          <el-table-column prop="strengthsComment" label="优点亮点" min-width="180" />
+          <el-table-column prop="improvementComment" label="改进建议" min-width="180" />
+          <el-table-column prop="recommendedScore" label="建议成绩" width="100" />
+          <el-table-column label="学院状态" width="100">
+            <template #default="{ row }">{{ row.confirmedByCollege ? "已确认" : "待确认" }}</template>
+          </el-table-column>
           <el-table-column label="操作" width="120">
             <template #default="{ row }"><el-button link type="primary" @click="openEvaluationDialog(row)">编辑</el-button></template>
           </el-table-column>
@@ -348,34 +390,65 @@ watch(() => route.path, loadAll);
       </div>
     </template>
 
+    <template v-else-if="section === 'alerts'">
+      <div class="page-header">
+        <div>
+          <h2>预警催办</h2>
+          <div class="subtle">查看超时审核、退回未改和待学院确认的风险任务，并一键发送催办提醒。</div>
+        </div>
+      </div>
+      <FilterTablePanel
+        v-model:keyword="alertKeyword"
+        v-model:current-page="alertPage"
+        placeholder="筛选类型、标题、对象、级别"
+        :total="filteredAlerts.length"
+        :page-size="pageSize"
+      >
+        <el-table :data="pagedAlerts" style="margin-top: 16px">
+          <el-table-column prop="category" label="类型" width="120" />
+          <el-table-column label="级别" width="100">
+            <template #default="{ row }"><el-tag :type="row.level === 'danger' ? 'danger' : 'warning'">{{ row.level === "danger" ? "高" : "中" }}</el-tag></template>
+          </el-table-column>
+          <el-table-column prop="title" label="预警标题" min-width="220" />
+          <el-table-column prop="content" label="说明" min-width="260" />
+          <el-table-column prop="targetName" label="催办对象" width="120" />
+          <el-table-column prop="overdueDays" label="超时天数" width="100" />
+          <el-table-column label="操作" width="140">
+            <template #default="{ row }">
+              <el-button v-if="row.remindable" link type="primary" @click="sendReminder(row)">{{ row.remindActionLabel || "发送催办" }}</el-button>
+              <span v-else class="subtle">请尽快处理</span>
+            </template>
+          </el-table-column>
+          <template #empty><el-empty description="暂无风险预警" /></template>
+        </el-table>
+      </FilterTablePanel>
+    </template>
+
     <template v-else-if="section === 'messages'">
       <div class="page-header">
         <div>
           <h2>消息中心</h2>
-          <div class="subtle">聚合审核待办、学生提醒与系统结果反馈。</div>
+          <div class="subtle">聚合审核待办、学生提醒和系统结果反馈。</div>
         </div>
       </div>
-      <div class="panel-card">
-        <div class="toolbar"><el-input v-model="messageKeyword" placeholder="筛选类型、标题、内容" clearable style="max-width: 320px" /></div>
+      <FilterTablePanel
+        v-model:keyword="messageKeyword"
+        v-model:current-page="messagePage"
+        placeholder="筛选类型、标题、内容"
+        :total="filteredMessages.length"
+        :page-size="pageSize"
+      >
         <el-table :data="pagedMessages" style="margin-top: 16px">
           <el-table-column prop="type" label="类型" width="120" />
           <el-table-column prop="title" label="标题" min-width="200" />
           <el-table-column prop="content" label="内容" min-width="240" />
           <el-table-column label="状态" width="100"><template #default="{ row }">{{ row.read ? "已读" : "未读" }}</template></el-table-column>
           <el-table-column label="操作" width="120">
-            <template #default="{ row }"><el-button link type="primary" @click="markRead(row)">标记已读</el-button></template>
+            <template #default="{ row }"><el-button v-if="!row.read" link type="primary" @click="markRead(row)">标记已读</el-button><span v-else class="subtle">已处理</span></template>
           </el-table-column>
           <template #empty><el-empty description="暂无消息" /></template>
         </el-table>
-        <el-pagination
-          v-if="filteredMessages.length > pageSize"
-          v-model:current-page="messagePage"
-          layout="prev, pager, next"
-          :page-size="pageSize"
-          :total="filteredMessages.length"
-          style="margin-top: 16px; justify-content: flex-end"
-        />
-      </div>
+      </FilterTablePanel>
     </template>
 
     <el-dialog v-model="mentorReviewDialog" title="处理指导申请" width="520px">
@@ -389,7 +462,7 @@ watch(() => route.path, loadAll);
     <el-dialog v-model="formReviewDialog" title="审核表单" width="560px">
       <el-form label-position="top">
         <el-form-item label="审核结论"><el-switch v-model="formReviewForm.approved" inline-prompt active-text="通过" inactive-text="退回" /></el-form-item>
-        <el-form-item label="评分"><el-input-number v-model="formReviewForm.score" :min="0" :max="100" /></el-form-item>
+        <el-form-item label="评分"><el-input-number v-model="formReviewForm.score" :min="0" :max="100" style="width: 100%" /></el-form-item>
         <el-form-item label="审核意见"><el-input v-model="formReviewForm.comment" type="textarea" :rows="4" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="formReviewDialog = false">取消</el-button><el-button type="primary" color="#0f766e" @click="submitFormReview">提交审核</el-button></template>
@@ -398,7 +471,7 @@ watch(() => route.path, loadAll);
     <el-dialog v-model="guidanceDialog" title="新增指导记录" width="640px">
       <el-form label-position="top">
         <el-form-item label="学生">
-          <el-select v-model="guidanceForm.studentId" placeholder="请选择学生" style="width:100%">
+          <el-select v-model="guidanceForm.studentId" placeholder="请选择学生" style="width: 100%">
             <el-option v-for="item in activeStudents" :key="item.id" :label="`${item.name} / ${item.studentNo}`" :value="item.id" />
           </el-select>
         </el-form-item>
@@ -406,7 +479,7 @@ watch(() => route.path, loadAll);
           <el-col :span="12"><el-form-item label="指导时间"><el-input v-model="guidanceForm.guidanceAt" placeholder="YYYY-MM-DD HH:mm" /></el-form-item></el-col>
           <el-col :span="12">
             <el-form-item label="指导方式">
-              <el-select v-model="guidanceForm.mode" style="width:100%">
+              <el-select v-model="guidanceForm.mode" style="width: 100%">
                 <el-option label="线上" value="线上" />
                 <el-option label="线下" value="线下" />
               </el-select>
@@ -423,13 +496,22 @@ watch(() => route.path, loadAll);
     <el-dialog v-model="evaluationDialog" title="填写评价" width="640px">
       <el-form label-position="top">
         <el-form-item label="学生">
-          <el-select v-model="evaluationForm.studentId" placeholder="请选择学生" style="width:100%">
+          <el-select v-model="evaluationForm.studentId" placeholder="请选择学生" style="width: 100%">
             <el-option v-for="item in activeStudents" :key="item.id" :label="`${item.name} / ${item.studentNo}`" :value="item.id" />
           </el-select>
         </el-form-item>
+        <div v-for="item in evaluationForm.dimensionScores" :key="item.key" class="panel-card" style="margin-bottom: 12px">
+          <div class="page-header">
+            <h2 style="font-size: 16px">{{ item.label }}</h2>
+            <el-input-number v-model="item.score" :min="0" :max="100" />
+          </div>
+          <el-input v-model="item.comment" type="textarea" :rows="2" :placeholder="`请输入${item.label}评价说明`" />
+        </div>
         <el-form-item label="阶段评价"><el-input v-model="evaluationForm.stageComment" type="textarea" :rows="3" /></el-form-item>
         <el-form-item label="总结评价"><el-input v-model="evaluationForm.summaryComment" type="textarea" :rows="4" /></el-form-item>
-        <el-form-item label="建议成绩"><el-input-number v-model="evaluationForm.finalScore" :min="0" :max="100" /></el-form-item>
+        <el-form-item label="优点亮点"><el-input v-model="evaluationForm.strengthsComment" type="textarea" :rows="3" /></el-form-item>
+        <el-form-item label="改进建议"><el-input v-model="evaluationForm.improvementComment" type="textarea" :rows="3" /></el-form-item>
+        <el-form-item label="建议成绩"><el-input-number v-model="evaluationForm.finalScore" :min="0" :max="100" style="width: 100%" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="evaluationDialog = false">取消</el-button><el-button type="primary" color="#0f766e" @click="submitEvaluation">提交评价</el-button></template>
     </el-dialog>

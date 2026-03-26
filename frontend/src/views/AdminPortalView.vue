@@ -1,8 +1,10 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { ElMessage } from "element-plus";
-import { get, post } from "../api/http";
+import { ElMessage } from "element-plus/es/components/message/index";
+import { get, patch, post, put } from "../api/http";
+import FilterTablePanel from "../components/FilterTablePanel.vue";
+import { useFilteredPagination } from "../composables/useFilteredPagination";
 
 const route = useRoute();
 const loading = ref(false);
@@ -10,48 +12,119 @@ const dashboard = ref({});
 const collegeApplications = ref([]);
 const basicData = ref({});
 const logs = ref([]);
+const formTemplates = ref([]);
+const systemSettings = ref([]);
 const section = computed(() => route.meta.section || "dashboard");
 
 const reviewDialog = ref(false);
+const templateDialog = ref(false);
+const settingsSaving = ref(false);
+const templateMode = ref("create");
 const currentRow = ref(null);
 const reviewForm = reactive({ approved: true, comment: "" });
+const templateForm = reactive(createEmptyTemplateForm());
+const settingsForm = reactive({});
 
-const applicationKeyword = ref("");
-const logKeyword = ref("");
-const applicationPage = ref(1);
-const logPage = ref(1);
 const pageSize = 6;
 
-function containsKeyword(values, keyword) {
-  return values.filter(Boolean).some((value) => String(value).includes(keyword));
+const {
+  keyword: applicationKeyword,
+  currentPage: applicationPage,
+  filteredItems: filteredCollegeApplications,
+  pagedItems: pagedCollegeApplications,
+} = useFilteredPagination({
+  source: collegeApplications,
+  matcher: (item) => [item.schoolName, item.collegeName, item.contactName, item.contactPhone, item.status],
+  pageSize,
+});
+
+const {
+  keyword: templateKeyword,
+  currentPage: templatePage,
+  filteredItems: filteredTemplates,
+  pagedItems: pagedTemplates,
+} = useFilteredPagination({
+  source: formTemplates,
+  matcher: (item) => [item.code, item.name, item.category, item.description, ...(item.applicableTypes || [])],
+  pageSize,
+});
+
+const {
+  keyword: logKeyword,
+  currentPage: logPage,
+  filteredItems: filteredLogs,
+  pagedItems: pagedLogs,
+} = useFilteredPagination({
+  source: logs,
+  matcher: (item) => [item.type, item.action, item.detail, item.operatorId],
+  pageSize,
+});
+
+const enabledTemplateCount = computed(() => formTemplates.value.filter((item) => item.enabled).length);
+const disabledTemplateCount = computed(() => formTemplates.value.filter((item) => !item.enabled).length);
+const reminderSettings = computed(() => systemSettings.value.filter((item) => item.category === "REMINDER"));
+const enabledReminderCount = computed(() => reminderSettings.value.filter((item) => item.valueType === "BOOLEAN" && settingsForm[item.key] === true).length);
+
+function createDefaultFields() {
+  return [
+    { key: "title", label: "标题", type: "text", required: true, placeholder: "请输入标题" },
+    { key: "summary", label: "内容摘要", type: "textarea", required: true, placeholder: "请输入内容摘要" },
+  ];
 }
 
-const filteredCollegeApplications = computed(() => {
-  const keyword = applicationKeyword.value.trim();
-  return keyword ? collegeApplications.value.filter((item) => containsKeyword([item.schoolName, item.collegeName, item.contactName, item.contactPhone, item.status], keyword)) : collegeApplications.value;
-});
-const filteredLogs = computed(() => {
-  const keyword = logKeyword.value.trim();
-  return keyword ? logs.value.filter((item) => containsKeyword([item.type, item.action, item.detail, item.operatorId], keyword)) : logs.value;
-});
+function createEmptyTemplateForm() {
+  return {
+    code: "",
+    name: "",
+    category: "COMMON",
+    description: "",
+    applicableTypes: ["TEACHING", "HEAD_TEACHER"],
+    enabled: true,
+    sortNo: 100,
+    fieldSchema: createDefaultFields(),
+  };
+}
 
-const pagedCollegeApplications = computed(() =>
-  filteredCollegeApplications.value.slice((applicationPage.value - 1) * pageSize, applicationPage.value * pageSize)
-);
-const pagedLogs = computed(() => filteredLogs.value.slice((logPage.value - 1) * pageSize, logPage.value * pageSize));
+function resetTemplateForm() {
+  const next = createEmptyTemplateForm();
+  templateForm.code = next.code;
+  templateForm.name = next.name;
+  templateForm.category = next.category;
+  templateForm.description = next.description;
+  templateForm.applicableTypes = [...next.applicableTypes];
+  templateForm.enabled = next.enabled;
+  templateForm.sortNo = next.sortNo;
+  templateForm.fieldSchema = next.fieldSchema.map((item) => ({ ...item }));
+}
 
+function syncSettingsForm() {
+  for (const item of systemSettings.value) {
+    if (item.valueType === "BOOLEAN") {
+      settingsForm[item.key] = String(item.value ?? "0") === "1";
+    } else if (item.valueType === "INTEGER") {
+      settingsForm[item.key] = Number(item.value ?? 0);
+    } else {
+      settingsForm[item.key] = String(item.value ?? "");
+    }
+  }
+}
 async function loadAll() {
   loading.value = true;
   try {
-    const [dashboardData, applicationData, basicDataResult, logData] = await Promise.all([
+    const [dashboardData, applicationData, basicDataResult, settingData, templateData, logData] = await Promise.all([
       get("/dashboard"),
       get("/admin/college-applications"),
       get("/admin/basic-data"),
+      get("/admin/system-settings"),
+      get("/admin/form-templates"),
       get("/admin/logs"),
     ]);
     dashboard.value = dashboardData;
     collegeApplications.value = applicationData;
     basicData.value = basicDataResult;
+    systemSettings.value = settingData;
+    syncSettingsForm();
+    formTemplates.value = templateData;
     logs.value = logData;
   } catch (error) {
     ElMessage.error(error.message);
@@ -78,10 +151,148 @@ async function submitReview() {
   }
 }
 
-watch([applicationKeyword, logKeyword], () => {
-  applicationPage.value = 1;
-  logPage.value = 1;
-});
+function openCreateTemplate() {
+  templateMode.value = "create";
+  resetTemplateForm();
+  templateDialog.value = true;
+}
+
+function openEditTemplate(row) {
+  templateMode.value = "edit";
+  templateForm.code = row.code;
+  templateForm.name = row.name;
+  templateForm.category = row.category;
+  templateForm.description = row.description || "";
+  templateForm.applicableTypes = Array.isArray(row.applicableTypes) ? [...row.applicableTypes] : [];
+  templateForm.enabled = row.enabled !== false;
+  templateForm.sortNo = row.sortNo ?? 100;
+  templateForm.fieldSchema = (row.fieldSchema?.length ? row.fieldSchema : createDefaultFields()).map((item) => ({ ...item }));
+  templateDialog.value = true;
+}
+
+function addTemplateField() {
+  templateForm.fieldSchema.push({
+    key: "",
+    label: "",
+    type: "text",
+    required: false,
+    placeholder: "",
+  });
+}
+
+function removeTemplateField(index) {
+  if (templateForm.fieldSchema.length <= 1) {
+    ElMessage.warning("至少保留一个表单字段。");
+    return;
+  }
+  templateForm.fieldSchema.splice(index, 1);
+}
+
+function validateTemplateForm() {
+  if (!templateForm.code.trim() && templateMode.value === "create") {
+    ElMessage.warning("请输入模板编码。");
+    return false;
+  }
+  if (!templateForm.name.trim()) {
+    ElMessage.warning("请输入模板名称。");
+    return false;
+  }
+  if (!templateForm.applicableTypes.length) {
+    ElMessage.warning("请至少选择一个适用实习类型。");
+    return false;
+  }
+
+  const keySet = new Set();
+  for (const field of templateForm.fieldSchema) {
+    if (!field.key.trim() || !field.label.trim()) {
+      ElMessage.warning("请完整填写字段编码和字段名称。");
+      return false;
+    }
+    if (!/^[a-zA-Z][a-zA-Z0-9_]{1,31}$/.test(field.key.trim())) {
+      ElMessage.warning("字段编码需以字母开头，仅支持字母、数字和下划线。");
+      return false;
+    }
+    if (keySet.has(field.key.trim())) {
+      ElMessage.warning("字段编码不能重复。");
+      return false;
+    }
+    keySet.add(field.key.trim());
+  }
+  return true;
+}
+
+function buildTemplatePayload() {
+  return {
+    code: templateForm.code.trim(),
+    name: templateForm.name.trim(),
+    category: templateForm.category,
+    description: templateForm.description.trim(),
+    applicableTypes: [...templateForm.applicableTypes],
+    enabled: templateForm.enabled,
+    sortNo: templateForm.sortNo ?? 100,
+    fieldSchema: templateForm.fieldSchema.map((item) => ({
+      key: item.key.trim(),
+      label: item.label.trim(),
+      type: item.type,
+      required: item.required === true,
+      placeholder: (item.placeholder || "").trim(),
+    })),
+  };
+}
+
+async function saveSystemSettings() {
+  const items = reminderSettings.value.map((item) => {
+    const rawValue = settingsForm[item.key];
+    if (item.valueType === "BOOLEAN") {
+      return { key: item.key, value: rawValue ? "1" : "0" };
+    }
+    if (item.valueType === "INTEGER") {
+      return { key: item.key, value: String(rawValue ?? 0).trim() };
+    }
+    return { key: item.key, value: String(rawValue ?? "").trim() };
+  });
+  settingsSaving.value = true;
+  try {
+    await put("/admin/system-settings", { items });
+    ElMessage.success("系统参数已保存。");
+    await loadAll();
+  } catch (error) {
+    ElMessage.error(error.message);
+  } finally {
+    settingsSaving.value = false;
+  }
+}
+async function submitTemplate() {
+  if (!validateTemplateForm()) {
+    return;
+  }
+
+  const payload = buildTemplatePayload();
+
+  try {
+    if (templateMode.value === "create") {
+      await post("/admin/form-templates", payload);
+      ElMessage.success("表单模板已创建。");
+    } else {
+      await put(`/admin/form-templates/${templateForm.code}`, payload);
+      ElMessage.success("表单模板已更新。");
+    }
+    templateDialog.value = false;
+    await loadAll();
+  } catch (error) {
+    ElMessage.error(error.message);
+  }
+}
+
+async function toggleTemplateStatus(row) {
+  try {
+    await patch(`/admin/form-templates/${row.code}/status`, { enabled: !row.enabled });
+    ElMessage.success(row.enabled ? "表单模板已停用。" : "表单模板已启用。");
+    await loadAll();
+  } catch (error) {
+    ElMessage.error(error.message);
+  }
+}
 
 onMounted(loadAll);
 watch(() => route.path, loadAll);
@@ -103,8 +314,14 @@ watch(() => route.path, loadAll);
         <div class="metric-card"><h4>全局表单数</h4><strong>{{ dashboard.totalForms || 0 }}</strong></div>
         <div class="metric-card"><h4>未读消息</h4><strong>{{ dashboard.unreadMessages || 0 }}</strong></div>
       </div>
-      <div class="panel-card">
-        <div class="toolbar"><el-input v-model="applicationKeyword" placeholder="筛选学校、学院、联系人、状态" clearable style="max-width: 340px" /></div>
+      <FilterTablePanel
+        v-model:keyword="applicationKeyword"
+        v-model:current-page="applicationPage"
+        placeholder="筛选学校、学院、联系人、状态"
+        input-width="340px"
+        :total="filteredCollegeApplications.length"
+        :page-size="pageSize"
+      >
         <el-table :data="pagedCollegeApplications">
           <el-table-column prop="schoolName" label="学校" min-width="180" />
           <el-table-column prop="collegeName" label="学院" min-width="180" />
@@ -112,11 +329,14 @@ watch(() => route.path, loadAll);
           <el-table-column prop="contactPhone" label="联系电话" width="140" />
           <el-table-column prop="status" label="状态" width="120" />
           <el-table-column prop="createdAt" label="申请时间" width="180" />
-          <el-table-column label="操作" width="100"><template #default="{ row }"><el-button link type="primary" @click="openReview(row)">审核</el-button></template></el-table-column>
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openReview(row)">审核</el-button>
+            </template>
+          </el-table-column>
           <template #empty><el-empty description="暂无学院入驻申请" /></template>
         </el-table>
-        <el-pagination v-if="filteredCollegeApplications.length > pageSize" v-model:current-page="applicationPage" layout="prev, pager, next" :page-size="pageSize" :total="filteredCollegeApplications.length" style="margin-top: 16px; justify-content: flex-end" />
-      </div>
+      </FilterTablePanel>
     </template>
 
     <template v-else-if="section === 'basic'">
@@ -147,6 +367,115 @@ watch(() => route.path, loadAll);
       </div>
     </template>
 
+    <template v-else-if="section === 'params'">
+      <div class="page-header">
+        <div>
+          <h2>参数配置</h2>
+          <div class="subtle">当前支持配置预警阈值、预警级别、是否允许催办以及催办文案模板，满足二期“提醒规则尽量配置化”的要求。</div>
+        </div>
+        <el-button type="primary" color="#0f766e" :loading="settingsSaving" @click="saveSystemSettings">保存参数</el-button>
+      </div>
+      <div class="metric-grid">
+        <div class="metric-card"><h4>提醒参数</h4><strong>{{ reminderSettings.length }}</strong></div>
+        <div class="metric-card"><h4>启用催办规则</h4><strong>{{ enabledReminderCount }}</strong></div>
+      </div>
+      <div class="panel-card">
+        <div v-for="item in reminderSettings" :key="item.key" class="panel-card" style="margin-bottom: 14px; border: 1px solid rgba(15, 118, 110, 0.12)">
+          <div class="page-header">
+            <div>
+              <h2 style="font-size: 18px">{{ item.name }}</h2>
+              <div class="subtle">{{ item.description }}</div>
+            </div>
+            <el-tag type="info">{{ item.key }}</el-tag>
+          </div>
+          <el-row :gutter="16" style="margin-top: 12px">
+            <el-col :span="12">
+              <el-form-item label="参数值">
+                <el-input-number
+                  v-if="item.valueType === 'INTEGER'"
+                  v-model="settingsForm[item.key]"
+                  :min="0"
+                  :max="30"
+                  style="width: 100%"
+                />
+                <el-switch
+                  v-else-if="item.valueType === 'BOOLEAN'"
+                  v-model="settingsForm[item.key]"
+                  inline-prompt
+                  active-text="启用"
+                  inactive-text="关闭"
+                />
+                <el-select v-else-if="item.valueType === 'SELECT'" v-model="settingsForm[item.key]" style="width: 100%">
+                  <el-option v-for="option in item.options || []" :key="`${item.key}-${option.value}`" :label="option.label" :value="option.value" />
+                </el-select>
+                <el-input
+                  v-else
+                  v-model="settingsForm[item.key]"
+                  type="textarea"
+                  :rows="item.key.endsWith('_content_template') ? 4 : 2"
+                  placeholder="请输入模板内容，可使用 {title}、{targetName}、{overdueDays} 等变量"
+                />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="最近更新时间">
+                <el-input :model-value="item.updatedAt || '未更新'" readonly />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </div>
+      </div>
+    </template>
+    <template v-else-if="section === 'templates'">
+      <div class="page-header">
+        <div>
+          <h2>表单模板配置</h2>
+          <div class="subtle">二期起步功能。支持按实习类型配置模板、字段结构、启停状态和展示顺序。</div>
+        </div>
+        <el-button type="primary" color="#0f766e" @click="openCreateTemplate">新增模板</el-button>
+      </div>
+      <div class="metric-grid">
+        <div class="metric-card"><h4>模板总数</h4><strong>{{ formTemplates.length }}</strong></div>
+        <div class="metric-card"><h4>启用模板</h4><strong>{{ enabledTemplateCount }}</strong></div>
+        <div class="metric-card"><h4>停用模板</h4><strong>{{ disabledTemplateCount }}</strong></div>
+      </div>
+      <FilterTablePanel
+        v-model:keyword="templateKeyword"
+        v-model:current-page="templatePage"
+        placeholder="筛选编码、名称、分类、说明、适用类型"
+        input-width="360px"
+        :total="filteredTemplates.length"
+        :page-size="pageSize"
+      >
+        <el-table :data="pagedTemplates">
+          <el-table-column prop="code" label="模板编码" min-width="160" />
+          <el-table-column prop="name" label="模板名称" min-width="150" />
+          <el-table-column prop="category" label="分类" width="120" />
+          <el-table-column label="适用类型" min-width="180">
+            <template #default="{ row }">
+              <el-space wrap>
+                <el-tag v-for="item in row.applicableTypes || []" :key="item" type="success">{{ item }}</el-tag>
+              </el-space>
+            </template>
+          </el-table-column>
+          <el-table-column prop="sortNo" label="排序" width="90" />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? "启用" : "停用" }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="updatedAt" label="更新时间" width="180" />
+          <el-table-column label="操作" width="180">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openEditTemplate(row)">编辑</el-button>
+              <el-button link :type="row.enabled ? 'danger' : 'success'" @click="toggleTemplateStatus(row)">{{ row.enabled ? "停用" : "启用" }}</el-button>
+            </template>
+          </el-table-column>
+          <template #empty><el-empty description="暂无表单模板配置" /></template>
+        </el-table>
+      </FilterTablePanel>
+    </template>
+
     <template v-else-if="section === 'logs'">
       <div class="page-header">
         <div>
@@ -154,8 +483,14 @@ watch(() => route.path, loadAll);
           <div class="subtle">查看近期登录日志和关键业务动作留痕，帮助平台侧排查操作责任链路。</div>
         </div>
       </div>
-      <div class="panel-card">
-        <div class="toolbar"><el-input v-model="logKeyword" placeholder="筛选类型、动作、详情、操作人" clearable style="max-width: 340px" /></div>
+      <FilterTablePanel
+        v-model:keyword="logKeyword"
+        v-model:current-page="logPage"
+        placeholder="筛选类型、动作、详情、操作人"
+        input-width="340px"
+        :total="filteredLogs.length"
+        :page-size="pageSize"
+      >
         <el-table :data="pagedLogs">
           <el-table-column prop="type" label="类型" width="120" />
           <el-table-column prop="action" label="动作" min-width="180" />
@@ -164,8 +499,7 @@ watch(() => route.path, loadAll);
           <el-table-column prop="createdAt" label="时间" width="180" />
           <template #empty><el-empty description="暂无日志记录" /></template>
         </el-table>
-        <el-pagination v-if="filteredLogs.length > pageSize" v-model:current-page="logPage" layout="prev, pager, next" :page-size="pageSize" :total="filteredLogs.length" style="margin-top: 16px; justify-content: flex-end" />
-      </div>
+      </FilterTablePanel>
     </template>
 
     <el-dialog v-model="reviewDialog" title="审核学院入驻申请" width="520px">
@@ -173,7 +507,107 @@ watch(() => route.path, loadAll);
         <el-form-item label="审核结论"><el-switch v-model="reviewForm.approved" inline-prompt active-text="通过" inactive-text="驳回" /></el-form-item>
         <el-form-item label="审核意见"><el-input v-model="reviewForm.comment" type="textarea" :rows="4" /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="reviewDialog = false">取消</el-button><el-button type="primary" color="#0f766e" @click="submitReview">提交审核</el-button></template>
+      <template #footer>
+        <el-button @click="reviewDialog = false">取消</el-button>
+        <el-button type="primary" color="#0f766e" @click="submitReview">提交审核</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="templateDialog" :title="templateMode === 'create' ? '新增表单模板' : '编辑表单模板'" width="880px">
+      <el-form label-position="top">
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="模板编码">
+              <el-input v-model="templateForm.code" :disabled="templateMode === 'edit'" placeholder="例如：weekly-summary" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="模板名称">
+              <el-input v-model="templateForm.name" placeholder="请输入模板名称" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="8">
+            <el-form-item label="模板分类">
+              <el-select v-model="templateForm.category" style="width: 100%">
+                <el-option label="通用" value="COMMON" />
+                <el-option label="任课实习" value="TEACHING" />
+                <el-option label="班主任实习" value="HEAD_TEACHER" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="适用实习类型">
+              <el-select v-model="templateForm.applicableTypes" multiple style="width: 100%">
+                <el-option label="任课实习" value="TEACHING" />
+                <el-option label="班主任实习" value="HEAD_TEACHER" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="4">
+            <el-form-item label="排序">
+              <el-input-number v-model="templateForm.sortNo" :min="1" :max="999" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="4">
+            <el-form-item label="启用">
+              <el-switch v-model="templateForm.enabled" inline-prompt active-text="启用" inactive-text="停用" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="模板说明">
+          <el-input v-model="templateForm.description" type="textarea" :rows="3" placeholder="请输入模板说明" />
+        </el-form-item>
+
+        <div class="page-header" style="margin-top: 10px">
+          <div>
+            <h2 style="font-size: 18px">字段配置</h2>
+            <div class="subtle">当前版本支持 `text`、`textarea`、`date` 三种字段类型。</div>
+          </div>
+          <el-button plain @click="addTemplateField">新增字段</el-button>
+        </div>
+
+        <div v-for="(field, index) in templateForm.fieldSchema" :key="`${index}-${field.key}`" class="panel-card" style="margin-top: 12px">
+          <div class="page-header">
+            <h2 style="font-size: 16px">字段 {{ index + 1 }}</h2>
+            <el-button link type="danger" @click="removeTemplateField(index)">删除</el-button>
+          </div>
+          <el-row :gutter="16">
+            <el-col :span="6">
+              <el-form-item label="字段编码">
+                <el-input v-model="field.key" placeholder="例如：title" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="6">
+              <el-form-item label="字段名称">
+                <el-input v-model="field.label" placeholder="例如：标题" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="6">
+              <el-form-item label="字段类型">
+                <el-select v-model="field.type" style="width: 100%">
+                  <el-option label="单行文本" value="text" />
+                  <el-option label="多行文本" value="textarea" />
+                  <el-option label="日期" value="date" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="6">
+              <el-form-item label="是否必填">
+                <el-switch v-model="field.required" inline-prompt active-text="必填" inactive-text="选填" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-form-item label="占位提示">
+            <el-input v-model="field.placeholder" placeholder="请输入表单占位提示" />
+          </el-form-item>
+        </div>
+      </el-form>
+      <template #footer>
+        <el-button @click="templateDialog = false">取消</el-button>
+        <el-button type="primary" color="#0f766e" @click="submitTemplate">{{ templateMode === "create" ? "创建模板" : "保存修改" }}</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>

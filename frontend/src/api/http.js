@@ -1,7 +1,24 @@
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8080/api";
+const STORAGE_TOKEN = "internship-token";
+const STORAGE_USER = "internship-user";
 
 function getToken() {
-  return localStorage.getItem("internship-token") || "";
+  return localStorage.getItem(STORAGE_TOKEN) || "";
+}
+
+function clearAuthState() {
+  localStorage.removeItem(STORAGE_TOKEN);
+  localStorage.removeItem(STORAGE_USER);
+}
+
+function redirectToLogin() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (window.location.pathname !== "/login") {
+    window.location.href = "/login";
+  }
 }
 
 function getErrorMessage(payload) {
@@ -44,6 +61,12 @@ export async function request(url, options = {}) {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      clearAuthState();
+      redirectToLogin();
+      throw new Error("登录状态已失效或当前账号无权访问，请重新登录。");
+    }
+
     throw new Error(getErrorMessage(payload));
   }
 

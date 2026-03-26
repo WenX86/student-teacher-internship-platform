@@ -11,5 +11,11 @@ public class FormTemplateEntity {
     private String code;
     private String name;
     private String category;
+    private String description;
     private String applicableTypesJson;
+    private String fieldSchemaJson;
+    private Boolean enabled;
+    private Integer sortNo;
+    private java.time.LocalDateTime createdAt;
+    private java.time.LocalDateTime updatedAt;
 }

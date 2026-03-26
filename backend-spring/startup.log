@@ -1,0 +1,37 @@
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v3.3.5)
+
+2026-03-19T15:20:53.297+08:00  INFO 17784 --- [internship-platform-backend] [           main] c.i.p.InternshipPlatformApplication      : Starting InternshipPlatformApplication v0.0.1-SNAPSHOT using Java 21.0.8 with PID 17784 (D:\CFile\师范生实习记录平台\backend-spring\target\internship-platform-backend-0.0.1-SNAPSHOT.jar started by 32468 in D:\CFile\师范生实习记录平台\backend-spring)
+2026-03-19T15:20:53.299+08:00  INFO 17784 --- [internship-platform-backend] [           main] c.i.p.InternshipPlatformApplication      : The following 1 profile is active: "dev-mysql"
+2026-03-19T15:20:53.299+08:00 DEBUG 17784 --- [internship-platform-backend] [           main] o.s.boot.SpringApplication               : Loading source class com.internship.platform.InternshipPlatformApplication
+2026-03-19T15:20:53.356+08:00 DEBUG 17784 --- [internship-platform-backend] [           main] ConfigServletWebServerApplicationContext : Refreshing org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext@53dbe163
+2026-03-19T15:21:02.629+08:00 DEBUG 17784 --- [internship-platform-backend] [           main] .s.b.w.e.t.TomcatServletWebServerFactory : Code archive: D:\CFile\师范生实习记录平台\backend-spring\target\internship-platform-backend-0.0.1-SNAPSHOT.jar
+2026-03-19T15:21:02.629+08:00 DEBUG 17784 --- [internship-platform-backend] [           main] .s.b.w.e.t.TomcatServletWebServerFactory : Code archive: D:\CFile\师范生实习记录平台\backend-spring\target\internship-platform-backend-0.0.1-SNAPSHOT.jar
+2026-03-19T15:21:02.629+08:00 DEBUG 17784 --- [internship-platform-backend] [           main] .s.b.w.e.t.TomcatServletWebServerFactory : None of the document roots [src/main/webapp, public, static] point to a directory and will be ignored.
+2026-03-19T15:21:02.650+08:00  INFO 17784 --- [internship-platform-backend] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 8080 (http)
+2026-03-19T15:21:02.667+08:00  INFO 17784 --- [internship-platform-backend] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-03-19T15:21:02.667+08:00  INFO 17784 --- [internship-platform-backend] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.31]
+2026-03-19T15:21:02.706+08:00  INFO 17784 --- [internship-platform-backend] [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-03-19T15:21:02.706+08:00 DEBUG 17784 --- [internship-platform-backend] [           main] w.s.c.ServletWebServerApplicationContext : Published root WebApplicationContext as ServletContext attribute with name [org.springframework.web.context.WebApplicationContext.ROOT]
+2026-03-19T15:21:02.709+08:00  INFO 17784 --- [internship-platform-backend] [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 9350 ms
+ _ _   |_  _ _|_. ___ _ |    _ 
+| | |\/|_)(_| | |_\  |_)||_|_\ 
+     /               |         
+                        3.5.8 
+2026-03-19T15:21:02.986+08:00  INFO 17784 --- [internship-platform-backend] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-03-19T15:21:03.211+08:00  INFO 17784 --- [internship-platform-backend] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection com.mysql.cj.jdbc.ConnectionImpl@44286963
+2026-03-19T15:21:03.222+08:00  INFO 17784 --- [internship-platform-backend] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-03-19T15:21:04.073+08:00 DEBUG 17784 --- [internship-platform-backend] [           main] o.s.b.w.s.ServletContextInitializerBeans : Mapping filters: springSecurityFilterChain urls=[/*] order=-100, characterEncodingFilter urls=[/*] order=-2147483648, formContentFilter urls=[/*] order=-9900, requestContextFilter urls=[/*] order=-105, tokenAuthenticationFilter urls=[/*] order=2147483647
+2026-03-19T15:21:04.073+08:00 DEBUG 17784 --- [internship-platform-backend] [           main] o.s.b.w.s.ServletContextInitializerBeans : Mapping servlets: dispatcherServlet urls=[/]
+2026-03-19T15:21:04.112+08:00 DEBUG 17784 --- [internship-platform-backend] [           main] o.s.b.w.s.f.OrderedRequestContextFilter  : Filter 'requestContextFilter' configured for use
+2026-03-19T15:21:04.113+08:00 DEBUG 17784 --- [internship-platform-backend] [           main] s.b.w.s.f.OrderedCharacterEncodingFilter : Filter 'characterEncodingFilter' configured for use
+2026-03-19T15:21:04.113+08:00 DEBUG 17784 --- [internship-platform-backend] [           main] .DelegatingFilterProxyRegistrationBean$1 : Filter 'springSecurityFilterChain' configured for use
+2026-03-19T15:21:04.113+08:00 DEBUG 17784 --- [internship-platform-backend] [           main] o.s.b.w.s.f.OrderedFormContentFilter     : Filter 'formContentFilter' configured for use
+2026-03-19T15:21:04.194+08:00 DEBUG 17784 --- [internship-platform-backend] [           main] o.s.b.a.AutoConfigurationPackages        : @EnableAutoConfiguration was declared on a class in the package 'com.internship.platform'. Automatic @Repository and @Entity scanning is enabled.

@@ -4,6 +4,10 @@ import { get, post } from "../api/http";
 const STORAGE_TOKEN = "internship-token";
 const STORAGE_USER = "internship-user";
 
+function persistUser(user) {
+  localStorage.setItem(STORAGE_USER, JSON.stringify(user));
+}
+
 export const useAuthStore = defineStore("auth", {
   state: () => ({
     token: localStorage.getItem(STORAGE_TOKEN) || "",
@@ -15,7 +19,7 @@ export const useAuthStore = defineStore("auth", {
       this.token = result.token;
       this.user = result.user;
       localStorage.setItem(STORAGE_TOKEN, result.token);
-      localStorage.setItem(STORAGE_USER, JSON.stringify(result.user));
+      persistUser(result.user);
       return result.user;
     },
     async refreshUser() {
@@ -25,8 +29,12 @@ export const useAuthStore = defineStore("auth", {
 
       const user = await get("/auth/me");
       this.user = user;
-      localStorage.setItem(STORAGE_USER, JSON.stringify(user));
+      persistUser(user);
       return user;
+    },
+    async changePassword(newPassword) {
+      await post("/auth/change-password", { newPassword });
+      return this.refreshUser();
     },
     logout() {
       this.token = "";

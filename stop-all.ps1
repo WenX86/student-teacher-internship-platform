@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$NoPause
 )
 
@@ -6,15 +6,16 @@ $ErrorActionPreference = "Stop"
 
 $root = $PSScriptRoot
 $stateFile = Join-Path $root "logs\start-all.state.json"
+$backendStopScript = Join-Path $root "backend-spring\stop-dev.ps1"
 
 function Stop-PidTree {
     param(
         [Parameter(Mandatory = $true)]
-        [int]$Pid
+        [int]$ProcessId
     )
 
     try {
-        & taskkill.exe /PID $Pid /T /F | Out-Null
+        & taskkill.exe /PID $ProcessId /T /F 2>$null | Out-Null
         return $LASTEXITCODE -eq 0
     } catch {
         return $false
@@ -34,12 +35,25 @@ $state = Get-Content $stateFile -Raw | ConvertFrom-Json
 $backendStopped = $false
 $frontendStopped = $false
 
-if ($state.backendPid) {
-    $backendStopped = Stop-PidTree -Pid [int]$state.backendPid
+if (Test-Path $backendStopScript) {
+    try {
+        & "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -ExecutionPolicy Bypass -File $backendStopScript | Out-Null
+        $backendStopped = $true
+    } catch {
+        $backendStopped = $false
+    }
+}
+
+if (-not $backendStopped -and $state.backendPid) {
+    $backendStopped = Stop-PidTree -ProcessId ([int]$state.backendPid)
+}
+
+if (-not $backendStopped -and $state.backendLauncherPid) {
+    $backendStopped = Stop-PidTree -ProcessId ([int]$state.backendLauncherPid)
 }
 
 if ($state.frontendPid) {
-    $frontendStopped = Stop-PidTree -Pid [int]$state.frontendPid
+    $frontendStopped = Stop-PidTree -ProcessId ([int]$state.frontendPid)
 }
 
 Remove-Item $stateFile -ErrorAction SilentlyContinue
@@ -52,3 +66,4 @@ if (-not $NoPause) {
     Write-Host "Press any key to close this window."
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
+

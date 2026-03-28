@@ -46,7 +46,7 @@ async function submit() {
   loading.value = true;
   try {
     const user = await authStore.login(form);
-    ElMessage.success(`欢迎回来，${user.name}`);
+    ElMessage.success(user.mustChangePassword ? `欢迎回来，${user.name}，请先修改初始密码。` : `欢迎回来，${user.name}`);
     router.push(resolveHome(user.role));
   } catch (error) {
     ElMessage.error(error.message);

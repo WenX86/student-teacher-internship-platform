@@ -2,9 +2,10 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage } from "element-plus/es/components/message/index";
-import { get, post, put } from "../api/http";
+import { downloadFile, get, post, put, uploadFile } from "../api/http";
 import FilterTablePanel from "../components/FilterTablePanel.vue";
 import { useFilteredPagination } from "../composables/useFilteredPagination";
+import { getMessageTypeMeta, getReadStatusMeta, getStatusMeta } from "../utils/status";
 
 const route = useRoute();
 const loading = ref(false);
@@ -17,6 +18,10 @@ const templates = ref([]);
 const forms = ref([]);
 const messages = ref([]);
 const evaluations = ref([]);
+const attachmentUploading = reactive({
+  internship: false,
+  form: false,
+});
 
 const mentorDialogVisible = ref(false);
 const internshipDialogVisible = ref(false);
@@ -30,18 +35,20 @@ const mentorForm = reactive({
 
 const internshipForm = reactive({
   organizationId: "",
-  batchName: "2026春季批次",
+  batchName: "2026年春季学期",
   position: "",
   gradeTarget: "",
   startDate: "",
   endDate: "",
   remark: "",
+  attachments: [],
 });
 
 const formModel = reactive({
   templateCode: "",
   content: {},
   submit: true,
+  attachments: [],
 });
 
 const pageSize = 5;
@@ -49,7 +56,24 @@ const pageSize = 5;
 const section = computed(() => route.meta.section || "dashboard");
 const latestForms = computed(() => forms.value.slice(0, 5));
 const unreadMessages = computed(() => messages.value.filter((item) => !item.read));
+const messageReadFilter = ref("ALL");
+const messageReadOptions = [
+  { label: "全部消息", value: "ALL" },
+  { label: "只看未读", value: "UNREAD" },
+  { label: "只看已读", value: "READ" },
+];
+const filteredMessageSource = computed(() => {
+  if (messageReadFilter.value === "UNREAD") {
+    return messages.value.filter((item) => !item.read);
+  }
+  if (messageReadFilter.value === "READ") {
+    return messages.value.filter((item) => item.read);
+  }
+  return messages.value;
+});
 const selectedTemplate = computed(() => templates.value.find((item) => item.code === formModel.templateCode) || null);
+const hasEffectiveMentor = computed(() => mentorApplications.value.some((item) => item.status === "已生效"));
+const editableFormStatuses = ["草稿", "教师退回", "学院退回"];
 const templateFields = computed(() => {
   if (selectedTemplate.value?.fieldSchema?.length) {
     return selectedTemplate.value.fieldSchema;
@@ -85,7 +109,7 @@ const {
   filteredItems: filteredMessages,
   pagedItems: pagedMessages,
 } = useFilteredPagination({
-  source: messages,
+  source: filteredMessageSource,
   matcher: (item) => [item.type, item.title, item.content],
   pageSize,
 });
@@ -131,6 +155,10 @@ async function loadAll() {
   }
 }
 
+function cloneAttachments(items) {
+  return Array.isArray(items) ? items.map((item) => ({ ...item })) : [];
+}
+
 function resetMentorForm() {
   mentorForm.teacherId = "";
   mentorForm.studentRemark = "";
@@ -138,12 +166,13 @@ function resetMentorForm() {
 
 function resetInternshipForm() {
   internshipForm.organizationId = "";
-  internshipForm.batchName = "2026春季批次";
+  internshipForm.batchName = "2026年春季学期";
   internshipForm.position = "";
   internshipForm.gradeTarget = "";
   internshipForm.startDate = "";
   internshipForm.endDate = "";
   internshipForm.remark = "";
+  internshipForm.attachments = [];
 }
 
 function resetFormModel() {
@@ -151,12 +180,13 @@ function resetFormModel() {
   formModel.templateCode = "";
   syncFormContent([]);
   formModel.submit = true;
+  formModel.attachments = [];
 }
 
 function createDefaultFields() {
   return [
     { key: "title", label: "标题", type: "text", required: true, placeholder: "请输入标题" },
-    { key: "summary", label: "内容摘要", type: "textarea", required: true, placeholder: "请输入内容摘要" },
+    { key: "summary", label: "摘要", type: "textarea", required: true, placeholder: "请输入摘要" },
   ];
 }
 
@@ -173,15 +203,86 @@ function handleTemplateChange() {
   syncFormContent(templateFields.value);
 }
 
+function formatFileSize(size) {
+  const value = Number(size || 0);
+  if (value >= 1024 * 1024) {
+    return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+  }
+  if (value >= 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+  return `${value} B`;
+}
+
+function attachmentsFor(target) {
+  return target === "internship" ? internshipForm.attachments : formModel.attachments;
+}
+
+function setAttachments(target, items) {
+  if (target === "internship") {
+    internshipForm.attachments = items;
+    return;
+  }
+  formModel.attachments = items;
+}
+
+async function handleAttachmentChange(event, target) {
+  const files = Array.from(event.target.files || []);
+  event.target.value = "";
+  if (!files.length) {
+    return;
+  }
+
+  attachmentUploading[target] = true;
+  let successCount = 0;
+  let firstError = "";
+
+  try {
+    for (const file of files) {
+      try {
+        const uploaded = await uploadFile(file);
+        setAttachments(target, [...attachmentsFor(target), uploaded]);
+        successCount += 1;
+      } catch (error) {
+        if (!firstError) {
+          firstError = `${file.name} 上传失败：${error.message}`;
+        }
+      }
+    }
+
+    if (successCount) {
+      ElMessage.success(`${successCount} 个附件上传成功`);
+    }
+    if (firstError) {
+      ElMessage.error(firstError);
+    }
+  } finally {
+    attachmentUploading[target] = false;
+  }
+}
+
+function removeAttachment(target, index) {
+  const next = attachmentsFor(target).filter((_, itemIndex) => itemIndex !== index);
+  setAttachments(target, next);
+}
+
+async function handleDownloadAttachment(item) {
+  try {
+    await downloadFile(item.downloadUrl || `/files/${item.storedName}`, item.name || "附件");
+  } catch (error) {
+    ElMessage.error(error.message);
+  }
+}
+
 async function submitMentorApplication() {
   if (!mentorForm.teacherId) {
-    ElMessage.warning("请选择指导教师。");
+    ElMessage.warning("请选择要下载的附件");
     return;
   }
 
   try {
     await post("/mentor-applications", mentorForm);
-    ElMessage.success("指导教师申请已提交。");
+    ElMessage.success("附件下载已开始");
     mentorDialogVisible.value = false;
     resetMentorForm();
     await loadAll();
@@ -190,20 +291,43 @@ async function submitMentorApplication() {
   }
 }
 
+function openInternshipDialog() {
+  if (!hasEffectiveMentor.value) {
+    ElMessage.warning("请先确保指导关系已生效后再发起实习申请");
+    return;
+  }
+  resetInternshipForm();
+  internshipDialogVisible.value = true;
+}
+
 async function submitInternshipApplication() {
+  if (!hasEffectiveMentor.value) {
+    ElMessage.warning("请先选择实习单位和岗位信息");
+    return;
+  }
+
   if (!internshipForm.organizationId || !internshipForm.position || !internshipForm.gradeTarget) {
-    ElMessage.warning("请完整填写实习单位、岗位和年级信息。");
+    ElMessage.warning("请填写完整的实习起止时间");
     return;
   }
 
   if (!internshipForm.startDate || !internshipForm.endDate) {
-    ElMessage.warning("请填写开始和结束日期。");
+    ElMessage.warning("请至少上传一个实习申请附件");
     return;
   }
 
   try {
-    await post("/internship-applications", internshipForm);
-    ElMessage.success("实习申请已提交。");
+    await post("/internship-applications", {
+      organizationId: internshipForm.organizationId,
+      batchName: internshipForm.batchName,
+      position: internshipForm.position,
+      gradeTarget: internshipForm.gradeTarget,
+      startDate: internshipForm.startDate,
+      endDate: internshipForm.endDate,
+      remark: internshipForm.remark,
+      attachments: cloneAttachments(internshipForm.attachments),
+    });
+    ElMessage.success("实习申请提交成功");
     internshipDialogVisible.value = false;
     resetInternshipForm();
     await loadAll();
@@ -218,19 +342,24 @@ function editExistingForm(row) {
   const template = templates.value.find((item) => item.code === row.templateCode);
   syncFormContent(template?.fieldSchema || createDefaultFields(), row.content || {});
   formModel.submit = true;
+  formModel.attachments = cloneAttachments(row.attachments);
   formDialogVisible.value = true;
+}
+
+function canEditForm(row) {
+  return editableFormStatuses.includes(row?.status);
 }
 
 async function submitForm() {
   if (!formModel.templateCode) {
-    ElMessage.warning("请选择表单模板。");
+    ElMessage.warning("请先选择表单模板");
     return;
   }
 
   for (const field of templateFields.value) {
     const value = `${formModel.content[field.key] ?? ""}`.trim();
     if (field.required && !value) {
-      ElMessage.warning(`请填写${field.label}。`);
+      ElMessage.warning(`请填写 ${field.label}`);
       return;
     }
   }
@@ -240,15 +369,15 @@ async function submitForm() {
       templateCode: formModel.templateCode,
       content: { ...formModel.content },
       submit: formModel.submit,
-      attachments: [],
+      attachments: cloneAttachments(formModel.attachments),
     };
 
     if (editingFormId.value) {
       await put(`/forms/${editingFormId.value}`, payload);
-      ElMessage.success("表单已更新。");
+      ElMessage.success("表单草稿已保存");
     } else {
       await post("/forms", payload);
-      ElMessage.success("表单已创建。");
+      ElMessage.success("表单提交成功");
     }
 
     formDialogVisible.value = false;
@@ -270,6 +399,9 @@ async function markRead(row) {
 
 onMounted(loadAll);
 watch(() => route.path, loadAll);
+watch(messageReadFilter, () => {
+  messagePage.value = 1;
+});
 </script>
 
 <template>
@@ -282,7 +414,7 @@ watch(() => route.path, loadAll);
         </div>
       </div>
       <div class="metric-grid">
-        <div class="metric-card"><h4>当前实习状态</h4><strong>{{ dashboard.internshipStatus || "待完善" }}</strong></div>
+        <div class="metric-card"><h4>当前实习状态</h4><strong>{{ dashboard.internshipStatus || "未开始" }}</strong></div>
         <div class="metric-card"><h4>指导关系状态</h4><strong>{{ dashboard.mentorStatus || "未申请" }}</strong></div>
         <div class="metric-card"><h4>待办任务</h4><strong>{{ dashboard.todoCount || 0 }}</strong></div>
         <div class="metric-card"><h4>已归档表单</h4><strong>{{ dashboard.archivedCount || 0 }}</strong></div>
@@ -294,11 +426,15 @@ watch(() => route.path, loadAll);
           <el-button type="primary" color="#0f766e" @click="formDialogVisible = true; resetFormModel()">新建表单</el-button>
         </div>
         <el-table :data="latestForms" style="margin-top: 16px">
-          <el-table-column prop="templateName" label="表单" />
-          <el-table-column prop="status" label="状态" />
+          <el-table-column prop="templateName" label="模板名称" />
+          <el-table-column label="状态" width="120">
+            <template #default="{ row }">
+              <el-tag :type="getStatusMeta(row.status).type">{{ getStatusMeta(row.status).label }}</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="updatedAt" label="更新时间" />
           <template #empty>
-            <el-empty description="暂无最近表单" />
+            <el-empty description="暂无表单记录" />
           </template>
         </el-table>
       </div>
@@ -309,9 +445,13 @@ watch(() => route.path, loadAll);
           <el-tag type="warning">{{ unreadMessages.length }} 条</el-tag>
         </div>
         <el-table :data="unreadMessages" style="margin-top: 16px">
-          <el-table-column prop="type" label="类型" width="120" />
-          <el-table-column prop="title" label="标题" />
-          <el-table-column prop="createdAt" label="时间" width="200" />
+          <el-table-column label="消息类型" width="120">
+            <template #default="{ row }">
+              <el-tag :type="getMessageTypeMeta(row.type).type">{{ getMessageTypeMeta(row.type).label }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="title" label="消息标题" />
+          <el-table-column prop="createdAt" label="创建时间" width="200" />
           <template #empty>
             <el-empty description="暂无未读消息" />
           </template>
@@ -323,21 +463,25 @@ watch(() => route.path, loadAll);
       <div class="page-header">
         <div>
           <h2>指导教师申请</h2>
-          <div class="subtle">选择指导教师后发起申请，待教师确认并由学院复核生效。</div>
+          <div class="subtle">选择指导教师后发起申请，待教师确认并由学院复核后生效。</div>
         </div>
-        <el-button type="primary" color="#0f766e" @click="mentorDialogVisible = true">发起申请</el-button>
+         <el-button type="primary" color="#0f766e" @click="mentorDialogVisible = true">新建申请</el-button>
       </div>
       <div class="panel-card">
         <el-table :data="mentorApplications">
-          <el-table-column label="教师" min-width="160">
+          <el-table-column label="指导教师" min-width="160">
             <template #default="{ row }">{{ row.teacher?.name }} / {{ row.teacher?.employeeNo }}</template>
           </el-table-column>
-          <el-table-column prop="status" label="状态" width="140" />
-          <el-table-column prop="studentRemark" label="申请说明" min-width="200" />
-          <el-table-column prop="teacherRemark" label="教师意见" min-width="160" />
-          <el-table-column prop="collegeRemark" label="学院意见" min-width="160" />
+          <el-table-column label="状态" width="140">
+            <template #default="{ row }">
+              <el-tag :type="getStatusMeta(row.status).type">{{ getStatusMeta(row.status).label }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="studentRemark" label="学生备注" min-width="200" />
+          <el-table-column prop="teacherRemark" label="教师备注" min-width="160" />
+          <el-table-column prop="collegeRemark" label="学院备注" min-width="160" />
           <template #empty>
-            <el-empty description="暂无指导教师申请记录" />
+            <el-empty description="暂无指导申请记录" />
           </template>
         </el-table>
       </div>
@@ -347,14 +491,17 @@ watch(() => route.path, loadAll);
       <div class="page-header">
         <div>
           <h2>实习申请</h2>
-          <div class="subtle">选择实习单位并提交学院审批，学院会同步登记单位确认结果。</div>
+          <div class="subtle">选择实习单位并提交学院审批，学院会同步记录单位确认结果。</div>
         </div>
-        <el-button type="primary" color="#0f766e" @click="internshipDialogVisible = true">新建申请</el-button>
+        <div style="display: grid; gap: 6px; justify-items: end">
+          <el-button type="primary" color="#0f766e" :disabled="!hasEffectiveMentor" @click="openInternshipDialog">新建实习申请</el-button>
+          <span v-if="!hasEffectiveMentor" class="subtle">指导关系生效后才能发起实习申请。</span>
+        </div>
       </div>
       <FilterTablePanel
         v-model:keyword="internshipKeyword"
         v-model:current-page="internshipPage"
-        placeholder="筛选单位、岗位、状态"
+        placeholder="搜索单位、岗位或审批状态"
         :total="filteredInternships.length"
         :page-size="pageSize"
       >
@@ -362,11 +509,31 @@ watch(() => route.path, loadAll);
           <el-table-column label="实习单位" min-width="180">
             <template #default="{ row }">{{ row.organization?.name }}</template>
           </el-table-column>
-          <el-table-column prop="position" label="岗位" width="140" />
-          <el-table-column prop="gradeTarget" label="年级" width="120" />
-          <el-table-column prop="status" label="审批状态" width="140" />
-          <el-table-column prop="organizationConfirmation" label="单位确认" width="140" />
-          <el-table-column prop="reviewComment" label="学院意见" min-width="200" />
+          <el-table-column prop="position" label="实习岗位" width="140" />
+          <el-table-column prop="gradeTarget" label="年级目标" width="120" />
+          <el-table-column label="审批状态" width="140">
+            <template #default="{ row }">
+              <el-tag :type="getStatusMeta(row.status).type">{{ getStatusMeta(row.status).label }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="附件列表" min-width="220">
+            <template #default="{ row }">
+              <el-space v-if="row.attachments?.length" wrap>
+                <el-button
+                  v-for="item in row.attachments"
+                  :key="item.id || item.storedName || item.name"
+                  link
+                  type="primary"
+                  @click="handleDownloadAttachment(item)"
+                >
+                  {{ item.name }}
+                </el-button>
+              </el-space>
+              <span v-else class="subtle">未上传附件</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="organizationConfirmation" label="单位确认情况" width="140" />
+          <el-table-column prop="reviewComment" label="学院审核意见" min-width="200" />
           <template #empty>
             <el-empty description="暂无实习申请记录" />
           </template>
@@ -377,29 +544,50 @@ watch(() => route.path, loadAll);
     <template v-else-if="section === 'forms'">
       <div class="page-header">
         <div>
-          <h2>核心表单</h2>
-          <div class="subtle">统一承载通用表单以及任课、班主任实习核心表单，按业务流程逐级流转。</div>
+          <h2>表单管理</h2>
+          <div class="subtle">统一管理通用表单与实习过程表单，按业务流程逐级流转。</div>
         </div>
         <el-button type="primary" color="#0f766e" @click="formDialogVisible = true; resetFormModel()">新建表单</el-button>
       </div>
       <FilterTablePanel
         v-model:keyword="formKeyword"
         v-model:current-page="formPage"
-        placeholder="筛选表单、状态、标题"
+        placeholder="搜索模板、标题或状态"
         :total="filteredForms.length"
         :page-size="pageSize"
       >
         <el-table :data="pagedForms" style="margin-top: 16px">
-          <el-table-column prop="templateName" label="表单名称" min-width="160" />
-          <el-table-column prop="category" label="类别" width="120" />
-          <el-table-column prop="status" label="状态" width="140" />
+          <el-table-column prop="templateName" label="模板名称" min-width="160" />
+          <el-table-column prop="category" label="分类" width="120" />
+          <el-table-column label="状态" width="140">
+            <template #default="{ row }">
+              <el-tag :type="getStatusMeta(row.status).type">{{ getStatusMeta(row.status).label }}</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="version" label="版本" width="90" />
           <el-table-column label="标题" min-width="180">
             <template #default="{ row }">{{ row.content?.title }}</template>
           </el-table-column>
+          <el-table-column label="附件列表" min-width="220">
+            <template #default="{ row }">
+              <el-space v-if="row.attachments?.length" wrap>
+                <el-button
+                  v-for="item in row.attachments"
+                  :key="item.id || item.storedName || item.name"
+                  link
+                  type="primary"
+                  @click="handleDownloadAttachment(item)"
+                >
+                  {{ item.name }}
+                </el-button>
+              </el-space>
+              <span v-else class="subtle">未上传附件</span>
+            </template>
+          </el-table-column>
           <el-table-column label="操作" width="120">
             <template #default="{ row }">
-              <el-button link type="primary" @click="editExistingForm(row)">编辑</el-button>
+              <el-button v-if="canEditForm(row)" link type="primary" @click="editExistingForm(row)">编辑</el-button>
+              <span v-else class="subtle">当前状态不可编辑</span>
             </template>
           </el-table-column>
           <template #empty>
@@ -419,16 +607,27 @@ watch(() => route.path, loadAll);
       <FilterTablePanel
         v-model:keyword="messageKeyword"
         v-model:current-page="messagePage"
-        placeholder="筛选类型、标题、内容"
+        placeholder="筛选类型、标题或内容"
         :total="filteredMessages.length"
         :page-size="pageSize"
       >
+        <template #toolbar-extra>
+          <el-select v-model="messageReadFilter" style="width: 140px">
+            <el-option v-for="option in messageReadOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </el-select>
+        </template>
         <el-table :data="pagedMessages" style="margin-top: 16px">
-          <el-table-column prop="type" label="类型" width="120" />
+          <el-table-column label="绫诲瀷" width="120">
+            <template #default="{ row }">
+              <el-tag :type="getMessageTypeMeta(row.type).type">{{ getMessageTypeMeta(row.type).label }}</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="title" label="标题" min-width="220" />
           <el-table-column prop="content" label="内容" min-width="260" />
           <el-table-column label="状态" width="100">
-            <template #default="{ row }">{{ row.read ? "已读" : "未读" }}</template>
+            <template #default="{ row }">
+              <el-tag :type="getReadStatusMeta(row.read).type">{{ getReadStatusMeta(row.read).label }}</el-tag>
+            </template>
           </el-table-column>
           <el-table-column label="操作" width="120">
             <template #default="{ row }">
@@ -455,7 +654,7 @@ watch(() => route.path, loadAll);
           <el-table-column label="指导教师" width="140">
             <template #default="{ row }">{{ row.teacher?.name || "-" }}</template>
           </el-table-column>
-          <el-table-column label="评价维度" min-width="260">
+          <el-table-column label="维度评分" min-width="260">
             <template #default="{ row }">
               <el-space wrap>
                 <el-tag v-for="item in row.dimensionScores || []" :key="`${row.id}-${item.key}`" type="success">{{ item.label }} {{ item.score }}</el-tag>
@@ -464,29 +663,31 @@ watch(() => route.path, loadAll);
           </el-table-column>
           <el-table-column label="阶段评价" prop="stageComment" min-width="220" />
           <el-table-column label="总结评价" prop="summaryComment" min-width="260" />
-          <el-table-column label="优点亮点" prop="strengthsComment" min-width="180" />
+          <el-table-column label="优势亮点" prop="strengthsComment" min-width="180" />
           <el-table-column label="改进建议" prop="improvementComment" min-width="180" />
           <el-table-column label="教师建议成绩" prop="recommendedScore" width="120" />
           <el-table-column label="最终成绩" prop="finalScore" width="120" />
-          <el-table-column label="学院意见" prop="collegeComment" min-width="220" />
-          <el-table-column label="学院确认" width="120">
-            <template #default="{ row }">{{ row.confirmedByCollege ? "已确认" : "待确认" }}</template>
+          <el-table-column label="学院评语" prop="collegeComment" min-width="220" />
+          <el-table-column label="学院确认状态" width="120">
+            <template #default="{ row }">
+              <el-tag :type="getStatusMeta(row.confirmedByCollege ? '已确认' : '待确认').type">{{ getStatusMeta(row.confirmedByCollege ? '已确认' : '待确认').label }}</el-tag>
+            </template>
           </el-table-column>
           <template #empty>
-            <el-empty description="暂无评价结果" />
+            <el-empty description="暂无评价记录" />
           </template>
         </el-table>
       </div>
     </template>
 
-    <el-dialog v-model="mentorDialogVisible" title="发起指导教师申请" width="520px">
+    <el-dialog v-model="mentorDialogVisible" title="新建指导教师申请" width="520px">
       <el-form label-position="top">
-        <el-form-item label="选择教师">
+        <el-form-item label="指导教师">
           <el-select v-model="mentorForm.teacherId" placeholder="请选择指导教师" style="width: 100%">
             <el-option v-for="item in teachers" :key="item.id" :label="`${item.name} / ${item.employeeNo}`" :value="item.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="申请说明">
+        <el-form-item label="学生备注">
           <el-input v-model="mentorForm.studentRemark" type="textarea" :rows="4" />
         </el-form-item>
       </el-form>
@@ -496,7 +697,7 @@ watch(() => route.path, loadAll);
       </template>
     </el-dialog>
 
-    <el-dialog v-model="internshipDialogVisible" title="提交实习申请" width="640px">
+    <el-dialog v-model="internshipDialogVisible" title="新建实习申请" width="640px">
       <el-form label-position="top">
         <el-form-item label="实习单位">
           <el-select v-model="internshipForm.organizationId" placeholder="请选择实习单位" style="width: 100%">
@@ -505,12 +706,12 @@ watch(() => route.path, loadAll);
         </el-form-item>
         <el-row :gutter="14">
           <el-col :span="12">
-            <el-form-item label="岗位">
+            <el-form-item label="实习岗位">
               <el-input v-model="internshipForm.position" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="年级/对象">
+            <el-form-item label="年级目标">
               <el-input v-model="internshipForm.gradeTarget" />
             </el-form-item>
           </el-col>
@@ -527,8 +728,31 @@ watch(() => route.path, loadAll);
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="申请说明">
+        <el-form-item label="备注说明">
           <el-input v-model="internshipForm.remark" type="textarea" :rows="3" />
+        </el-form-item>
+        <el-form-item label="申请附件">
+          <div style="width: 100%">
+            <input type="file" multiple @change="handleAttachmentChange($event, 'internship')" />
+            <div class="subtle" style="margin-top: 8px">支持 pdf、doc、docx、xls、xlsx、jpg、jpeg、png、txt，单个附件不超过 10MB。</div>
+            <div v-if="attachmentUploading.internship" class="subtle" style="margin-top: 8px">附件上传中...</div>
+            <div v-if="internshipForm.attachments.length" style="margin-top: 12px; display: grid; gap: 8px">
+              <div
+                v-for="(item, index) in internshipForm.attachments"
+                :key="item.id || item.storedName || `${item.name}-${index}`"
+                style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid rgba(15,118,110,0.14);border-radius:12px"
+              >
+                <div>
+                  <div style="font-weight: 600">{{ item.name }}</div>
+                  <div class="subtle">{{ formatFileSize(item.size) }}</div>
+                </div>
+                <el-space>
+                  <el-button link type="primary" @click="handleDownloadAttachment(item)">下载</el-button>
+                  <el-button link type="danger" @click="removeAttachment('internship', index)">删除</el-button>
+                </el-space>
+              </div>
+            </div>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -540,7 +764,7 @@ watch(() => route.path, loadAll);
     <el-dialog v-model="formDialogVisible" :title="editingFormId ? '编辑表单' : '新建表单'" width="720px">
       <el-form label-position="top">
         <el-form-item label="表单模板">
-          <el-select v-model="formModel.templateCode" placeholder="请选择模板" style="width: 100%" @change="handleTemplateChange">
+          <el-select v-model="formModel.templateCode" placeholder="请选择表单模板" style="width: 100%" @change="handleTemplateChange">
             <el-option v-for="item in templates" :key="item.code" :label="`${item.name} (${item.category})`" :value="item.code" />
           </el-select>
         </el-form-item>
@@ -566,14 +790,38 @@ watch(() => route.path, loadAll);
             />
           </el-form-item>
         </template>
+        <el-form-item label="表单附件">
+          <div style="width: 100%">
+            <input type="file" multiple @change="handleAttachmentChange($event, 'form')" />
+            <div class="subtle" style="margin-top: 8px">支持上传与本次表单相关的证明材料、图片或文档。</div>
+            <div v-if="attachmentUploading.form" class="subtle" style="margin-top: 8px">附件上传中...</div>
+            <div v-if="formModel.attachments.length" style="margin-top: 12px; display: grid; gap: 8px">
+              <div
+                v-for="(item, index) in formModel.attachments"
+                :key="item.id || item.storedName || `${item.name}-${index}`"
+                style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid rgba(15,118,110,0.14);border-radius:12px"
+              >
+                <div>
+                  <div style="font-weight: 600">{{ item.name }}</div>
+                  <div class="subtle">{{ formatFileSize(item.size) }}</div>
+                </div>
+                <el-space>
+                  <el-button link type="primary" @click="handleDownloadAttachment(item)">下载</el-button>
+                  <el-button link type="danger" @click="removeAttachment('form', index)">删除</el-button>
+                </el-space>
+              </div>
+            </div>
+          </div>
+        </el-form-item>
         <el-form-item label="提交方式">
           <el-switch v-model="formModel.submit" inline-prompt active-text="提交审核" inactive-text="保存草稿" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="formDialogVisible = false">取消</el-button>
-        <el-button type="primary" color="#0f766e" @click="submitForm">{{ editingFormId ? "保存" : "创建" }}</el-button>
+        <el-button type="primary" color="#0f766e" @click="submitForm">{{ editingFormId ? "保存修改" : "提交表单" }}</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
+

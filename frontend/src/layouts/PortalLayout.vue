@@ -1,11 +1,18 @@
-﻿<script setup>
-import { computed } from "vue";
+<script setup>
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { ElMessage } from "element-plus/es/components/message/index";
 import { useAuthStore } from "../stores/auth";
 
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const changePasswordDialogVisible = ref(false);
+const savingPassword = ref(false);
+const passwordForm = reactive({
+  newPassword: "",
+  confirmPassword: "",
+});
 
 const menus = {
   STUDENT: [
@@ -57,10 +64,94 @@ const roleLabelMap = {
 const currentMenus = computed(() => menus[authStore.user?.role] || []);
 const roleLabel = computed(() => roleLabelMap[authStore.user?.role] || "平台用户");
 
+function resetPasswordForm() {
+  passwordForm.newPassword = "";
+  passwordForm.confirmPassword = "";
+}
+
+function openChangePasswordDialog() {
+  resetPasswordForm();
+  changePasswordDialogVisible.value = true;
+}
+
 function handleLogout() {
   authStore.logout();
   router.push("/login");
 }
+
+function handlePasswordDialogClose(done) {
+  if (authStore.user?.mustChangePassword) {
+    return;
+  }
+  resetPasswordForm();
+  done();
+}
+
+async function syncCurrentUser() {
+  if (!authStore.token) {
+    return;
+  }
+
+  try {
+    await authStore.refreshUser();
+  } catch (error) {
+    authStore.logout();
+    router.push("/login");
+    ElMessage.error(error.message);
+  }
+}
+
+async function submitPasswordChange() {
+  const nextPassword = passwordForm.newPassword.trim();
+  const confirmPassword = passwordForm.confirmPassword.trim();
+  const forcedChange = authStore.user?.mustChangePassword === true;
+
+  if (!nextPassword) {
+    ElMessage.warning("请输入新密码。");
+    return;
+  }
+
+  if (nextPassword.length < 6) {
+    ElMessage.warning("新密码长度不能少于 6 位。");
+    return;
+  }
+
+  if (!confirmPassword) {
+    ElMessage.warning("请再次输入新密码。");
+    return;
+  }
+
+  if (nextPassword !== confirmPassword) {
+    ElMessage.warning("两次输入的新密码不一致。");
+    return;
+  }
+
+  savingPassword.value = true;
+  try {
+    await authStore.changePassword(nextPassword);
+    changePasswordDialogVisible.value = false;
+    resetPasswordForm();
+    ElMessage.success(forcedChange ? "密码修改成功，请继续使用平台。" : "密码修改成功。");
+  } catch (error) {
+    ElMessage.error(error.message);
+  } finally {
+    savingPassword.value = false;
+  }
+}
+
+watch(
+  () => authStore.user?.mustChangePassword,
+  (mustChangePassword) => {
+    if (mustChangePassword) {
+      openChangePasswordDialog();
+    } else if (!savingPassword.value) {
+      changePasswordDialogVisible.value = false;
+    }
+  },
+  { immediate: true },
+);
+
+onMounted(syncCurrentUser);
 </script>
 
 <template>
@@ -91,7 +182,9 @@ function handleLogout() {
           <div class="subtle">{{ authStore.user?.account }} | {{ roleLabel }}</div>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
+          <el-tag v-if="authStore.user?.mustChangePassword" type="danger">首次登录待改密</el-tag>
           <el-tag type="success">一期主链已打通</el-tag>
+          <el-button plain @click="openChangePasswordDialog">修改密码</el-button>
           <el-button plain @click="handleLogout">退出登录</el-button>
         </div>
       </el-header>
@@ -100,4 +193,30 @@ function handleLogout() {
       </el-main>
     </el-container>
   </el-container>
+
+  <el-dialog
+    v-model="changePasswordDialogVisible"
+    :title="authStore.user?.mustChangePassword ? '首次登录请修改密码' : '修改密码'"
+    width="460px"
+    :show-close="!authStore.user?.mustChangePassword"
+    :close-on-click-modal="!authStore.user?.mustChangePassword"
+    :close-on-press-escape="!authStore.user?.mustChangePassword"
+    :before-close="handlePasswordDialogClose"
+  >
+    <div class="subtle" style="margin-bottom: 18px">
+      {{ authStore.user?.mustChangePassword ? "当前账号仍在使用初始密码，继续操作前请先完成修改。" : "建议定期更新密码，保障账号安全。" }}
+    </div>
+    <el-form label-position="top" @submit.prevent="submitPasswordChange">
+      <el-form-item label="新密码">
+        <el-input v-model="passwordForm.newPassword" type="password" show-password placeholder="请输入不少于 6 位的新密码" />
+      </el-form-item>
+      <el-form-item label="确认新密码">
+        <el-input v-model="passwordForm.confirmPassword" type="password" show-password placeholder="请再次输入新密码" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button v-if="!authStore.user?.mustChangePassword" @click="changePasswordDialogVisible = false">取消</el-button>
+      <el-button type="primary" color="#0f766e" :loading="savingPassword" @click="submitPasswordChange">确认修改</el-button>
+    </template>
+  </el-dialog>
 </template>

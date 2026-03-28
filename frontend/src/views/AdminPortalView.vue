@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage } from "element-plus/es/components/message/index";
+import { ElMessageBox } from "element-plus";
 import { get, patch, post, put } from "../api/http";
 import FilterTablePanel from "../components/FilterTablePanel.vue";
 import { useFilteredPagination } from "../composables/useFilteredPagination";
@@ -10,6 +11,7 @@ const route = useRoute();
 const loading = ref(false);
 const dashboard = ref({});
 const collegeApplications = ref([]);
+const collegeAdmins = ref([]);
 const basicData = ref({});
 const logs = ref([]);
 const formTemplates = ref([]);
@@ -17,15 +19,30 @@ const systemSettings = ref([]);
 const section = computed(() => route.meta.section || "dashboard");
 
 const reviewDialog = ref(false);
+const reviewResultDialog = ref(false);
 const templateDialog = ref(false);
 const settingsSaving = ref(false);
 const templateMode = ref("create");
 const currentRow = ref(null);
 const reviewForm = reactive({ approved: true, comment: "" });
+const reviewResult = ref(null);
 const templateForm = reactive(createEmptyTemplateForm());
 const settingsForm = reactive({});
 
 const pageSize = 6;
+const applicationStatus = ref("ALL");
+const applicationStatusOptions = [
+  { label: "全部状态", value: "ALL" },
+  { label: "只看待审核", value: "待审核" },
+  { label: "只看已通过", value: "已通过" },
+  { label: "只看已驳回", value: "已驳回" },
+];
+const applicationSource = computed(() => {
+  if (applicationStatus.value === "ALL") {
+    return collegeApplications.value;
+  }
+  return collegeApplications.value.filter((item) => item.status === applicationStatus.value);
+});
 
 const {
   keyword: applicationKeyword,
@@ -33,7 +50,7 @@ const {
   filteredItems: filteredCollegeApplications,
   pagedItems: pagedCollegeApplications,
 } = useFilteredPagination({
-  source: collegeApplications,
+  source: applicationSource,
   matcher: (item) => [item.schoolName, item.collegeName, item.contactName, item.contactPhone, item.status],
   pageSize,
 });
@@ -111,10 +128,11 @@ function syncSettingsForm() {
 async function loadAll() {
   loading.value = true;
   try {
-    const [dashboardData, applicationData, basicDataResult, settingData, templateData, logData] = await Promise.all([
+    const [dashboardData, applicationData, basicDataResult, collegeAdminData, settingData, templateData, logData] = await Promise.all([
       get("/dashboard"),
       get("/admin/college-applications"),
       get("/admin/basic-data"),
+      get("/admin/college-admins"),
       get("/admin/system-settings"),
       get("/admin/form-templates"),
       get("/admin/logs"),
@@ -122,6 +140,7 @@ async function loadAll() {
     dashboard.value = dashboardData;
     collegeApplications.value = applicationData;
     basicData.value = basicDataResult;
+    collegeAdmins.value = collegeAdminData;
     systemSettings.value = settingData;
     syncSettingsForm();
     formTemplates.value = templateData;
@@ -137,18 +156,32 @@ function openReview(row) {
   currentRow.value = row;
   reviewForm.approved = true;
   reviewForm.comment = row.reviewComment || "";
+  reviewResult.value = null;
   reviewDialog.value = true;
 }
 
 async function submitReview() {
   try {
-    await post(`/admin/college-applications/${currentRow.value.id}/review`, reviewForm);
-    ElMessage.success("入驻申请已处理。");
+    reviewResult.value = await post(`/admin/college-applications/${currentRow.value.id}/review`, reviewForm);
+    ElMessage.success("学院入驻申请已处理。");
     reviewDialog.value = false;
+    reviewResultDialog.value = true;
     await loadAll();
   } catch (error) {
     ElMessage.error(error.message);
   }
+}
+
+function findCollegeAdminForApplication(row) {
+  return collegeAdmins.value.find((item) => item.schoolName === row.schoolName && item.collegeName === row.collegeName) || null;
+}
+
+function reviewCreatedNewCollegeAdmin(row) {
+  return String(row.reviewComment || "").includes("初始密码：123456");
+}
+
+function reviewHasCollegeAdmin(row) {
+  return String(row.reviewComment || "").includes("学院管理员账号：");
 }
 
 function openCreateTemplate() {
@@ -294,8 +327,38 @@ async function toggleTemplateStatus(row) {
   }
 }
 
+async function toggleCollegeAdminStatus(row) {
+  try {
+    await patch(`/admin/college-admins/${row.id}/status`, { status: row.status === "ACTIVE" ? "DISABLED" : "ACTIVE" });
+    ElMessage.success(row.status === "ACTIVE" ? "学院管理员账号已停用。" : "学院管理员账号已启用。");
+    await loadAll();
+  } catch (error) {
+    ElMessage.error(error.message);
+  }
+}
+
+async function resetCollegeAdminPassword(row) {
+  try {
+    await ElMessageBox.confirm(`确认将 ${row.name} 的密码重置为 123456 吗？`, "重置学院管理员密码", {
+      confirmButtonText: "确认重置",
+      cancelButtonText: "取消",
+      type: "warning",
+    });
+    await post(`/admin/college-admins/${row.id}/reset-password`, {});
+    ElMessage.success("学院管理员密码已重置为 123456，并要求下次登录修改密码。");
+    await loadAll();
+  } catch (error) {
+    if (error === "cancel") {
+      return;
+    }
+    ElMessage.error(error.message || "重置密码失败");
+  }
+}
 onMounted(loadAll);
 watch(() => route.path, loadAll);
+watch(applicationStatus, () => {
+  applicationPage.value = 1;
+});
 </script>
 
 <template>
@@ -322,7 +385,49 @@ watch(() => route.path, loadAll);
         :total="filteredCollegeApplications.length"
         :page-size="pageSize"
       >
+        <template #toolbar-extra>
+          <el-select v-model="applicationStatus" style="width: 180px">
+            <el-option v-for="option in applicationStatusOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </el-select>
+        </template>
         <el-table :data="pagedCollegeApplications">
+          <el-table-column type="expand" width="54">
+            <template #default="{ row }">
+              <el-descriptions :column="2" border>
+                <el-descriptions-item label="申请说明" :span="2">{{ row.description || "未填写" }}</el-descriptions-item>
+                <el-descriptions-item label="审核意见" :span="2">{{ row.reviewComment || "暂无审核意见" }}</el-descriptions-item>
+                <el-descriptions-item label="账号处理结果" :span="2">
+                  {{ row.status === "已通过" ? (reviewCreatedNewCollegeAdmin(row) ? "审核通过时已自动创建学院管理员账号" : (reviewHasCollegeAdmin(row) ? "审核通过时已关联现有学院管理员账号" : "审核通过，但未识别到关联账号信息")) : "当前审核状态下未生成学院管理员账号" }}
+                </el-descriptions-item>
+                <el-descriptions-item label="学院管理员账号">
+                  <template v-if="findCollegeAdminForApplication(row)">
+                    <el-tag type="success">{{ findCollegeAdminForApplication(row).account }}</el-tag>
+                  </template>
+                  <span v-else>暂无</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="管理员姓名">
+                  {{ findCollegeAdminForApplication(row)?.name || "暂无" }}
+                </el-descriptions-item>
+                <el-descriptions-item label="账号状态">
+                  <template v-if="findCollegeAdminForApplication(row)">
+                    <el-tag :type="findCollegeAdminForApplication(row).status === 'ACTIVE' ? 'success' : 'info'">
+                      {{ findCollegeAdminForApplication(row).status === "ACTIVE" ? "启用" : "停用" }}
+                    </el-tag>
+                  </template>
+                  <span v-else>暂无</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="首次登录策略">
+                  <template v-if="findCollegeAdminForApplication(row)">
+                    {{ findCollegeAdminForApplication(row).mustChangePassword ? "首次登录必须修改密码" : "允许直接进入系统" }}
+                  </template>
+                  <span v-else>暂无</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="初始密码说明" :span="2">
+                  {{ reviewCreatedNewCollegeAdmin(row) ? "本次审核自动创建账号时的初始密码为 123456，请提醒学院联系人首次登录后立即修改。" : "当前记录未展示新的初始密码信息。" }}
+                </el-descriptions-item>
+              </el-descriptions>
+            </template>
+          </el-table-column>
           <el-table-column prop="schoolName" label="学校" min-width="180" />
           <el-table-column prop="collegeName" label="学院" min-width="180" />
           <el-table-column prop="contactName" label="联系人" width="110" />
@@ -364,6 +469,36 @@ watch(() => route.path, loadAll);
           <div class="subtle" style="margin: 20px 0 10px">表单状态</div>
           <el-space wrap><el-tag v-for="status in basicData.formStatuses || []" :key="status" type="info">{{ status }}</el-tag></el-space>
         </div>
+      </div>
+      <div class="panel-card" style="margin-top: 18px">
+        <div class="page-header">
+          <h2 style="font-size: 20px">学院管理员账号</h2>
+          <el-tag>{{ collegeAdmins.length }}</el-tag>
+        </div>
+        <el-table :data="collegeAdmins">
+          <el-table-column prop="schoolName" label="学校" min-width="160" />
+          <el-table-column prop="collegeName" label="学院" min-width="150" />
+          <el-table-column prop="name" label="管理员" width="120" />
+          <el-table-column prop="account" label="账号" width="140" />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'">{{ row.status === "ACTIVE" ? "启用" : "停用" }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="改密状态" width="120">
+            <template #default="{ row }">
+              <el-tag :type="row.mustChangePassword ? 'warning' : 'success'">{{ row.mustChangePassword ? "待改密" : "正常" }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="lastLoginAt" label="最近登录" width="180" />
+          <el-table-column label="操作" min-width="180">
+            <template #default="{ row }">
+              <el-button link :type="row.status === 'ACTIVE' ? 'danger' : 'success'" @click="toggleCollegeAdminStatus(row)">{{ row.status === "ACTIVE" ? "停用" : "启用" }}</el-button>
+              <el-button link type="primary" @click="resetCollegeAdminPassword(row)">重置密码</el-button>
+            </template>
+          </el-table-column>
+          <template #empty><el-empty description="暂无学院管理员账号" /></template>
+        </el-table>
       </div>
     </template>
 
@@ -510,6 +645,41 @@ watch(() => route.path, loadAll);
       <template #footer>
         <el-button @click="reviewDialog = false">取消</el-button>
         <el-button type="primary" color="#0f766e" @click="submitReview">提交审核</el-button>
+      </template>
+    </el-dialog>
+    <el-dialog v-model="reviewResultDialog" title="审核结果" width="560px">
+      <el-alert
+        :title="reviewResult && reviewResult.approved ? '学院入驻审核已通过' : '学院入驻审核已驳回'"
+        :type="reviewResult && reviewResult.approved ? 'success' : 'warning'"
+        :closable="false"
+        show-icon
+      />
+      <el-descriptions v-if="reviewResult" :column="1" border style="margin-top: 16px">
+        <el-descriptions-item label="学校">{{ reviewResult.schoolName }}</el-descriptions-item>
+        <el-descriptions-item label="学院">{{ reviewResult.collegeName }}</el-descriptions-item>
+        <el-descriptions-item label="审核状态">{{ reviewResult.status }}</el-descriptions-item>
+        <el-descriptions-item label="审核意见">{{ reviewResult.reviewComment || '无' }}</el-descriptions-item>
+        <el-descriptions-item v-if="reviewResult.approved" label="账号处理结果">
+          {{ reviewResult.generatedCollegeAdmin ? '已自动创建学院管理员账号' : '已关联现有学院管理员账号' }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="reviewResult.approved" label="学院管理员账号">
+          <el-tag type="success">{{ reviewResult.collegeAdminAccount }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="reviewResult.approved" label="管理员姓名">
+          {{ reviewResult.collegeAdminName }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="reviewResult.approved && reviewResult.defaultPassword" label="初始密码">
+          <el-tag type="warning">{{ reviewResult.defaultPassword }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="reviewResult.approved" label="首次登录策略">
+          {{ reviewResult.mustChangePassword ? '首次登录必须修改密码' : '允许直接进入系统' }}
+        </el-descriptions-item>
+      </el-descriptions>
+      <div v-if="reviewResult && reviewResult.approved" class="subtle" style="margin-top: 14px">
+        建议审核通过后立即将账号信息通知学院联系人，并提醒其首次登录后尽快修改密码。
+      </div>
+      <template #footer>
+        <el-button type="primary" color="#0f766e" @click="reviewResultDialog = false">我知道了</el-button>
       </template>
     </el-dialog>
 

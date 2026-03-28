@@ -43,7 +43,7 @@ function updateCurrentPage(value) {
 
 <template>
   <div class="panel-card">
-    <div v-if="showFilter" class="toolbar">
+    <div v-if="showFilter" class="toolbar" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap">
       <el-input
         :model-value="keyword"
         :placeholder="placeholder"
@@ -51,6 +51,7 @@ function updateCurrentPage(value) {
         :style="{ maxWidth: inputWidth }"
         @update:model-value="updateKeyword"
       />
+      <slot name="toolbar-extra" />
     </div>
     <slot />
     <el-pagination

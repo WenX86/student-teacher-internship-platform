@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$OpenBrowser,
     [switch]$NoPause
 )
@@ -7,8 +7,9 @@ $ErrorActionPreference = "Stop"
 
 $root = $PSScriptRoot
 $backendDir = Join-Path $root "backend-spring"
+$backendStartScript = Join-Path $backendDir "start-dev.ps1"
+$backendStateFile = Join-Path $backendDir "logs\backend-dev.state.json"
 $frontendDir = Join-Path $root "frontend"
-$backendJar = Join-Path $backendDir "target\internship-platform-backend-0.0.1-SNAPSHOT.jar"
 $logsDir = Join-Path $root "logs"
 $backendStdout = Join-Path $logsDir "backend.stdout.log"
 $backendStderr = Join-Path $logsDir "backend.stderr.log"
@@ -67,18 +68,8 @@ function Wait-PortListening {
     return $false
 }
 
-if (-not (Test-Path $backendJar)) {
-    throw "Backend JAR not found: $backendJar. Please build backend-spring first."
-}
-
-$javaPath = Resolve-ToolPath -CommandName "java.exe" -FallbackPaths @(
-    (Join-Path $env:JAVA_HOME "bin\java.exe"),
-    "C:\Program Files\Java\jdk-21\bin\java.exe",
-    "D:\Web\Java\jdk-21\bin\java.exe"
-)
-
-if (-not $javaPath) {
-    throw "java.exe not found. Please install JDK 21 and ensure JAVA_HOME / PATH are set."
+if (-not (Test-Path $backendStartScript)) {
+    throw "Backend start script not found: $backendStartScript"
 }
 
 $npmPath = Resolve-ToolPath -CommandName "npm.cmd" -FallbackPaths @(
@@ -92,7 +83,6 @@ if (-not $npmPath) {
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 Remove-Item $backendStdout, $backendStderr, $frontendStdout, $frontendStderr, $stateFile -ErrorAction SilentlyContinue
 
-# Frontend reads VITE_API_BASE at startup, so set it before spawning Vite.
 $env:VITE_API_BASE = "http://localhost:8080/api"
 $nodeDir = Split-Path -Parent $npmPath
 if ($nodeDir -and -not ($env:Path -split ";" | Where-Object { $_ -eq $nodeDir })) {
@@ -101,8 +91,8 @@ if ($nodeDir -and -not ($env:Path -split ";" | Where-Object { $_ -eq $nodeDir })
 
 Write-Host "Starting backend..."
 $backendProc = Start-Process `
-    -FilePath $javaPath `
-    -ArgumentList @("-jar", $backendJar) `
+    -FilePath "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" `
+    -ArgumentList @("-ExecutionPolicy", "Bypass", "-File", $backendStartScript, "-Detached") `
     -WorkingDirectory $backendDir `
     -PassThru `
     -WindowStyle Hidden `
@@ -121,6 +111,20 @@ $frontendProc = Start-Process `
 
 $backendReady = Wait-PortListening -Port 8080 -TimeoutSeconds 60
 $frontendReady = Wait-PortListening -Port 5173 -TimeoutSeconds 60
+$backendPid = $null
+for ($i = 0; $i -lt 10; $i++) {
+    if (Test-Path $backendStateFile) {
+        try {
+            $backendPid = (Get-Content $backendStateFile -Raw | ConvertFrom-Json).pid
+            if ($backendPid) {
+                break
+            }
+        } catch {
+            $backendPid = $null
+        }
+    }
+    Start-Sleep -Milliseconds 500
+}
 
 Write-Host ""
 Write-Host "Startup result:"
@@ -128,7 +132,7 @@ Write-Host "Startup result:"
 if ($backendReady) {
     Write-Host "Backend: http://localhost:8080"
 } else {
-    Write-Host "Backend: port 8080 not confirmed. See $backendStdout and $backendStderr"
+    Write-Host "Backend: port 8080 not confirmed. See $backendStdout, $backendStderr and backend-spring/logs"
 }
 
 if ($frontendReady) {
@@ -137,12 +141,16 @@ if ($frontendReady) {
     Write-Host "Frontend: port 5173 not confirmed. See $frontendStdout and $frontendStderr"
 }
 
-Write-Host ("Backend PID: {0}" -f $backendProc.Id)
+Write-Host ("Backend launcher PID: {0}" -f $backendProc.Id)
+if ($backendPid) {
+    Write-Host ("Backend service PID: {0}" -f $backendPid)
+}
 Write-Host ("Frontend PID: {0}" -f $frontendProc.Id)
 Write-Host ("Logs: {0}" -f $logsDir)
 
 $state = [ordered]@{
-    backendPid = $backendProc.Id
+    backendPid = $backendPid
+    backendLauncherPid = $backendProc.Id
     frontendPid = $frontendProc.Id
     backendPort = 8080
     frontendPort = 5173
@@ -158,3 +166,4 @@ if (-not $NoPause) {
     Write-Host "Press any key to close this window."
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
+

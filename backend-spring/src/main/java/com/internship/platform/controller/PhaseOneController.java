@@ -4,10 +4,18 @@ import com.internship.platform.common.ApiResponse;
 import com.internship.platform.dto.Requests;
 import com.internship.platform.entity.CollegeApplicationEntity;
 import com.internship.platform.entity.OrganizationEntity;
+import com.internship.platform.service.BatchImportService;
 import com.internship.platform.service.PhaseOneService;
 import jakarta.validation.Valid;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -16,9 +24,11 @@ import java.util.Map;
 public class PhaseOneController {
 
     private final PhaseOneService phaseOneService;
+    private final BatchImportService batchImportService;
 
-    public PhaseOneController(PhaseOneService phaseOneService) {
+    public PhaseOneController(PhaseOneService phaseOneService, BatchImportService batchImportService) {
         this.phaseOneService = phaseOneService;
+        this.batchImportService = batchImportService;
     }
 
     @GetMapping("/health")
@@ -64,6 +74,16 @@ public class PhaseOneController {
         return ApiResponse.ok();
     }
 
+    @GetMapping("/students/import-template")
+    public ResponseEntity<ByteArrayResource> downloadStudentImportTemplate() {
+        return excelResponse(batchImportService.buildStudentTemplate(phaseOneService.currentLoginUser()), "student-import-template.xlsx");
+    }
+
+    @PostMapping("/students/import")
+    public ApiResponse<Map<String, Object>> importStudents(@RequestParam("file") MultipartFile file) {
+        return ApiResponse.ok(batchImportService.importStudents(phaseOneService.currentLoginUser(), file));
+    }
+
     @PostMapping("/students/{id}/reset-password")
     public ApiResponse<Void> resetStudentPassword(@PathVariable String id) {
         phaseOneService.resetStudentPassword(phaseOneService.currentLoginUser(), id);
@@ -84,6 +104,28 @@ public class PhaseOneController {
     @PostMapping("/teachers")
     public ApiResponse<Void> createTeacher(@Valid @RequestBody Requests.TeacherCreateRequest request) {
         phaseOneService.createTeacher(phaseOneService.currentLoginUser(), request);
+        return ApiResponse.ok();
+    }
+
+    @GetMapping("/teachers/import-template")
+    public ResponseEntity<ByteArrayResource> downloadTeacherImportTemplate() {
+        return excelResponse(batchImportService.buildTeacherTemplate(phaseOneService.currentLoginUser()), "teacher-import-template.xlsx");
+    }
+
+    @PostMapping("/teachers/import")
+    public ApiResponse<Map<String, Object>> importTeachers(@RequestParam("file") MultipartFile file) {
+        return ApiResponse.ok(batchImportService.importTeachers(phaseOneService.currentLoginUser(), file));
+    }
+
+    @PostMapping("/teachers/{id}/reset-password")
+    public ApiResponse<Void> resetTeacherPassword(@PathVariable String id) {
+        phaseOneService.resetTeacherPassword(phaseOneService.currentLoginUser(), id);
+        return ApiResponse.ok();
+    }
+
+    @PatchMapping("/teachers/{id}/status")
+    public ApiResponse<Void> changeTeacherStatus(@PathVariable String id, @RequestBody Map<String, String> body) {
+        phaseOneService.changeTeacherStatus(phaseOneService.currentLoginUser(), id, body.get("status"));
         return ApiResponse.ok();
     }
 
@@ -227,14 +269,30 @@ public class PhaseOneController {
     }
 
     @PostMapping("/admin/college-applications/{id}/review")
-    public ApiResponse<Void> reviewCollegeApplication(@PathVariable String id, @Valid @RequestBody Requests.DecisionRequest request) {
-        phaseOneService.reviewCollegeApplication(phaseOneService.currentLoginUser(), id, request);
-        return ApiResponse.ok();
+    public ApiResponse<Map<String, Object>> reviewCollegeApplication(@PathVariable String id, @Valid @RequestBody Requests.DecisionRequest request) {
+        return ApiResponse.ok(phaseOneService.reviewCollegeApplication(phaseOneService.currentLoginUser(), id, request));
     }
 
     @GetMapping("/admin/basic-data")
     public ApiResponse<Map<String, Object>> basicData() {
         return ApiResponse.ok(phaseOneService.basicData(phaseOneService.currentLoginUser()));
+    }
+
+    @GetMapping("/admin/college-admins")
+    public ApiResponse<List<Map<String, Object>>> collegeAdmins() {
+        return ApiResponse.ok(phaseOneService.collegeAdmins(phaseOneService.currentLoginUser()));
+    }
+
+    @PostMapping("/admin/college-admins/{id}/reset-password")
+    public ApiResponse<Void> resetCollegeAdminPassword(@PathVariable String id) {
+        phaseOneService.resetCollegeAdminPassword(phaseOneService.currentLoginUser(), id);
+        return ApiResponse.ok();
+    }
+
+    @PatchMapping("/admin/college-admins/{id}/status")
+    public ApiResponse<Void> changeCollegeAdminStatus(@PathVariable String id, @RequestBody Map<String, String> body) {
+        phaseOneService.changeCollegeAdminStatus(phaseOneService.currentLoginUser(), id, body.get("status"));
+        return ApiResponse.ok();
     }
 
     @GetMapping("/admin/system-settings")
@@ -274,5 +332,15 @@ public class PhaseOneController {
     @GetMapping("/admin/logs")
     public ApiResponse<List<Map<String, Object>>> logs() {
         return ApiResponse.ok(phaseOneService.logs(phaseOneService.currentLoginUser()));
+    }
+    private ResponseEntity<ByteArrayResource> excelResponse(byte[] bytes, String fileName) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                        .filename(fileName, StandardCharsets.UTF_8)
+                        .build()
+                        .toString())
+                .contentLength(bytes.length)
+                .body(new ByteArrayResource(bytes));
     }
 }

@@ -360,6 +360,29 @@ public class PhaseOneService {
         teacherMapper.insert(teacher);
     }
 
+    @Transactional
+    public void resetTeacherPassword(LoginUser loginUser, String teacherId) {
+        requireRole(loginUser, RoleType.COLLEGE_ADMIN);
+        TeacherEntity teacher = requireTeacher(teacherId);
+        UserAccountEntity user = requireUser(teacher.getUserId());
+        user.setPassword(PasswordUtils.sha256("123456"));
+        user.setMustChangePassword(true);
+        userAccountMapper.updateById(user);
+        insertAudit("OPERATION", loginUser.id(), "\u91cd\u7f6e\u6559\u5e08\u5bc6\u7801", teacher.getName() + " / " + teacher.getEmployeeNo());
+    }
+
+    @Transactional
+    public void changeTeacherStatus(LoginUser loginUser, String teacherId, String status) {
+        requireRole(loginUser, RoleType.COLLEGE_ADMIN);
+        TeacherEntity teacher = requireTeacher(teacherId);
+        UserAccountEntity user = requireUser(teacher.getUserId());
+        user.setStatus(status);
+        userAccountMapper.updateById(user);
+        teacher.setStatus(status);
+        teacherMapper.updateById(teacher);
+        insertAudit("OPERATION", loginUser.id(), "\u66f4\u65b0\u6559\u5e08\u8d26\u53f7\u72b6\u6001", teacher.getName() + " -> " + status);
+    }
+
     public List<OrganizationEntity> organizations(LoginUser loginUser) {
         if (!Set.of(RoleType.COLLEGE_ADMIN.name(), RoleType.STUDENT.name()).contains(loginUser.role())) {
             throw new BizException("当前角色无权访问实习单位");
@@ -451,6 +474,7 @@ public class PhaseOneService {
         if (!teacher.getId().equals(entity.getTeacherId())) {
             throw new BizException("无权处理该指导申请");
         }
+        ensureMentorTeacherReviewable(entity);
         entity.setTeacherRemark(Optional.ofNullable(request.comment()).orElse(""));
         entity.setTeacherReviewedAt(LocalDateTime.now());
         entity.setStatus(Boolean.TRUE.equals(request.approved()) ? MentorApplicationStatus.PENDING_COLLEGE.getLabel() : MentorApplicationStatus.TEACHER_REJECTED.getLabel());
@@ -475,6 +499,7 @@ public class PhaseOneService {
     public void collegeReviewMentor(LoginUser loginUser, String applicationId, Requests.DecisionRequest request) {
         requireRole(loginUser, RoleType.COLLEGE_ADMIN);
         MentorApplicationEntity entity = requireMentorApplication(applicationId);
+        ensureMentorCollegeReviewable(loginUser, entity);
         entity.setCollegeRemark(Optional.ofNullable(request.comment()).orElse(""));
         entity.setCollegeReviewedAt(LocalDateTime.now());
         entity.setStatus(Boolean.TRUE.equals(request.approved()) ? MentorApplicationStatus.EFFECTIVE.getLabel() : MentorApplicationStatus.COLLEGE_REJECTED.getLabel());
@@ -553,6 +578,7 @@ public class PhaseOneService {
     public void reviewInternshipApplication(LoginUser loginUser, String applicationId, Requests.InternshipReviewRequest request) {
         requireRole(loginUser, RoleType.COLLEGE_ADMIN);
         InternshipApplicationEntity entity = requireInternshipApplication(applicationId);
+        ensureInternshipReviewable(loginUser, entity);
         entity.setStatus(Boolean.TRUE.equals(request.approved()) ? InternshipApplicationStatus.APPROVED.getLabel() : InternshipApplicationStatus.REJECTED.getLabel());
         entity.setOrganizationConfirmation(Optional.ofNullable(request.organizationConfirmation()).orElse(entity.getOrganizationConfirmation()));
         entity.setOrganizationFeedback(Optional.ofNullable(request.organizationFeedback()).orElse(""));
@@ -668,6 +694,7 @@ public class PhaseOneService {
         if (entity == null) {
             throw new BizException("表单不存在");
         }
+        ensureStudentCanEditForm(entity);
 
         List<Map<String, Object>> history = readMapList(entity.getHistoryJson());
         history.add(Map.of(
@@ -711,6 +738,7 @@ public class PhaseOneService {
         if (effectiveTeacher == null || !effectiveTeacher.getId().equals(teacher.getId())) {
             throw new BizException("无权审核该表单");
         }
+        ensureTeacherCanReviewForm(entity);
 
         entity.setTeacherComment(Optional.ofNullable(request.comment()).orElse(""));
         entity.setScore(request.score());
@@ -739,6 +767,7 @@ public class PhaseOneService {
         requireRole(loginUser, RoleType.COLLEGE_ADMIN);
         FormInstanceEntity entity = requireForm(formId);
         ensureCollegeAdminFormAccess(loginUser, entity);
+        ensureCollegeCanReviewForm(entity);
         applyCollegeReview(entity, request.approved(), request.score(), request.comment());
         formInstanceMapper.updateById(entity);
         notifyStudentAfterCollegeReview(entity, request.approved(), request.comment());
@@ -910,6 +939,9 @@ public class PhaseOneService {
             notifyCollegeForEvaluation(entity);
             return;
         }
+        if (Boolean.TRUE.equals(entity.getConfirmedByCollege())) {
+            throw new BizException("学院已确认该评价，当前不可修改");
+        }
         applyTeacherEvaluation(entity, request);
         evaluationRecordMapper.updateById(entity);
         notifyCollegeForEvaluation(entity);
@@ -926,6 +958,7 @@ public class PhaseOneService {
         if (!Objects.equals(student.getCollegeId(), loginUser.collegeId())) {
             throw new BizException("无权确认该评价");
         }
+        ensureEvaluationConfirmable(entity);
         if (request.collegeScore() < 0 || request.collegeScore() > 100) {
             throw new BizException("学院最终成绩需在 0 到 100 之间");
         }
@@ -1504,15 +1537,204 @@ public class PhaseOneService {
     }
 
     @Transactional
-    public void reviewCollegeApplication(LoginUser loginUser, String applicationId, Requests.DecisionRequest request) {
+    public Map<String, Object> reviewCollegeApplication(LoginUser loginUser, String applicationId, Requests.DecisionRequest request) {
         requireRole(loginUser, RoleType.SUPER_ADMIN);
         CollegeApplicationEntity entity = collegeApplicationMapper.selectById(applicationId);
         if (entity == null) {
             throw new BizException("入驻申请不存在");
         }
-        entity.setStatus(Boolean.TRUE.equals(request.approved()) ? "已通过" : "已驳回");
-        entity.setReviewComment(Optional.ofNullable(request.comment()).orElse(""));
+        if (!"待审核".equals(entity.getStatus())) {
+            throw new BizException("该入驻申请已处理");
+        }
+
+        boolean approved = Boolean.TRUE.equals(request.approved());
+        String reviewComment = Optional.ofNullable(request.comment()).orElse("").trim();
+        entity.setStatus(approved ? "已通过" : "已驳回");
+        CollegeEntity college = null;
+        UserAccountEntity collegeAdmin = null;
+        boolean generatedCollegeAdmin = false;
+        if (approved) {
+            college = ensureCollegeForApplication(entity);
+            UserAccountEntity existingAdmin = firstCollegeAdminUser(college.getId());
+            collegeAdmin = existingAdmin != null ? existingAdmin : ensureCollegeAdminForCollege(college, entity);
+            generatedCollegeAdmin = existingAdmin == null;
+            String accountTip = existingAdmin == null
+                    ? "学院管理员账号：" + collegeAdmin.getAccount() + "，初始密码：123456"
+                    : "已关联学院管理员账号：" + collegeAdmin.getAccount();
+            entity.setReviewComment(mergeReviewComment(reviewComment, accountTip));
+            insertAudit("OPERATION", loginUser.id(), "审核学院入驻申请", entity.getCollegeName() + " 已通过，自动创建学院与管理员账号");
+        } else {
+            entity.setReviewComment(reviewComment);
+            insertAudit("OPERATION", loginUser.id(), "审核学院入驻申请", entity.getCollegeName() + " 已驳回");
+        }
         collegeApplicationMapper.updateById(entity);
+        return buildCollegeApplicationReviewResult(entity, approved, college, collegeAdmin, generatedCollegeAdmin);
+    }
+
+    private Map<String, Object> buildCollegeApplicationReviewResult(
+            CollegeApplicationEntity entity,
+            boolean approved,
+            CollegeEntity college,
+            UserAccountEntity collegeAdmin,
+            boolean generatedCollegeAdmin
+    ) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", entity.getId());
+        payload.put("approved", approved);
+        payload.put("status", entity.getStatus());
+        payload.put("reviewComment", entity.getReviewComment());
+        payload.put("schoolName", entity.getSchoolName());
+        payload.put("collegeName", entity.getCollegeName());
+        if (approved && college != null && collegeAdmin != null) {
+            payload.put("collegeId", college.getId());
+            payload.put("collegeAdminAccount", collegeAdmin.getAccount());
+            payload.put("collegeAdminName", collegeAdmin.getName());
+            payload.put("generatedCollegeAdmin", generatedCollegeAdmin);
+            payload.put("defaultPassword", generatedCollegeAdmin ? "123456" : null);
+            payload.put("mustChangePassword", Boolean.TRUE.equals(collegeAdmin.getMustChangePassword()));
+        } else {
+            payload.put("collegeId", null);
+            payload.put("collegeAdminAccount", null);
+            payload.put("collegeAdminName", null);
+            payload.put("generatedCollegeAdmin", false);
+            payload.put("defaultPassword", null);
+            payload.put("mustChangePassword", false);
+        }
+        return payload;
+    }
+    private CollegeEntity ensureCollegeForApplication(CollegeApplicationEntity application) {
+        CollegeEntity existing = collegeMapper.selectOne(
+                Wrappers.<CollegeEntity>lambdaQuery()
+                        .eq(CollegeEntity::getSchoolName, application.getSchoolName())
+                        .eq(CollegeEntity::getName, application.getCollegeName())
+                        .last("limit 1")
+        );
+        if (existing != null) {
+            existing.setContactName(Optional.ofNullable(application.getContactName()).filter(item -> !item.isBlank()).orElse(existing.getContactName()));
+            existing.setContactPhone(Optional.ofNullable(application.getContactPhone()).filter(item -> !item.isBlank()).orElse(existing.getContactPhone()));
+            existing.setDescription(Optional.ofNullable(application.getDescription()).filter(item -> !item.isBlank()).orElse(existing.getDescription()));
+            collegeMapper.updateById(existing);
+            return existing;
+        }
+
+        CollegeEntity college = new CollegeEntity();
+        college.setId(IdGenerator.nextId("college"));
+        college.setSchoolName(application.getSchoolName());
+        college.setName(application.getCollegeName());
+        college.setContactName(application.getContactName());
+        college.setContactPhone(application.getContactPhone());
+        college.setDescription(application.getDescription());
+        collegeMapper.insert(college);
+        return college;
+    }
+
+    private UserAccountEntity ensureCollegeAdminForCollege(CollegeEntity college, CollegeApplicationEntity application) {
+        UserAccountEntity existing = firstCollegeAdminUser(college.getId());
+        if (existing != null) {
+            return existing;
+        }
+
+        UserAccountEntity user = new UserAccountEntity();
+        user.setId(IdGenerator.nextId("user"));
+        user.setAccount(nextCollegeAdminAccount());
+        user.setName(resolveCollegeAdminName(application, college));
+        user.setRole(RoleType.COLLEGE_ADMIN.name());
+        user.setPassword(PasswordUtils.sha256("123456"));
+        user.setMustChangePassword(true);
+        user.setStatus("ACTIVE");
+        user.setCollegeId(college.getId());
+        userAccountMapper.insert(user);
+        return user;
+    }
+
+    private String resolveCollegeAdminName(CollegeApplicationEntity application, CollegeEntity college) {
+        String contactName = Optional.ofNullable(application.getContactName()).map(String::trim).orElse("");
+        if (!contactName.isBlank()) {
+            return contactName;
+        }
+        return college.getName() + "管理员";
+    }
+
+    private String nextCollegeAdminAccount() {
+        long sequence = userAccountMapper.selectCount(
+                Wrappers.<UserAccountEntity>lambdaQuery().eq(UserAccountEntity::getRole, RoleType.COLLEGE_ADMIN.name())
+        ) + 1;
+        while (true) {
+            String candidate = String.format(Locale.ROOT, "college%02d", sequence);
+            long exists = userAccountMapper.selectCount(
+                    Wrappers.<UserAccountEntity>lambdaQuery().eq(UserAccountEntity::getAccount, candidate)
+            );
+            if (exists == 0) {
+                return candidate;
+            }
+            sequence += 1;
+        }
+    }
+
+    private String mergeReviewComment(String reviewComment, String extraComment) {
+        if (extraComment == null || extraComment.isBlank()) {
+            return reviewComment;
+        }
+        if (reviewComment == null || reviewComment.isBlank()) {
+            return extraComment;
+        }
+        return reviewComment + "；" + extraComment;
+    }
+
+    public List<Map<String, Object>> collegeAdmins(LoginUser loginUser) {
+        requireRole(loginUser, RoleType.SUPER_ADMIN);
+        return userAccountMapper.selectList(
+                        Wrappers.<UserAccountEntity>lambdaQuery()
+                                .eq(UserAccountEntity::getRole, RoleType.COLLEGE_ADMIN.name())
+                                .orderByAsc(UserAccountEntity::getCollegeId)
+                                .orderByAsc(UserAccountEntity::getAccount)
+                ).stream()
+                .map(user -> {
+                    CollegeEntity college = user.getCollegeId() == null ? null : collegeMapper.selectById(user.getCollegeId());
+                    Map<String, Object> payload = new LinkedHashMap<>();
+                    payload.put("id", user.getId());
+                    payload.put("account", user.getAccount());
+                    payload.put("name", user.getName());
+                    payload.put("status", user.getStatus());
+                    payload.put("mustChangePassword", Boolean.TRUE.equals(user.getMustChangePassword()));
+                    payload.put("lastLoginAt", user.getLastLoginAt());
+                    payload.put("collegeId", user.getCollegeId());
+                    payload.put("collegeName", college == null ? "" : college.getName());
+                    payload.put("schoolName", college == null ? "" : college.getSchoolName());
+                    payload.put("contactName", college == null ? "" : college.getContactName());
+                    payload.put("contactPhone", college == null ? "" : college.getContactPhone());
+                    return payload;
+                })
+                .toList();
+    }
+
+    @Transactional
+    public void resetCollegeAdminPassword(LoginUser loginUser, String userId) {
+        requireRole(loginUser, RoleType.SUPER_ADMIN);
+        UserAccountEntity user = requireUser(userId);
+        if (!RoleType.COLLEGE_ADMIN.name().equals(user.getRole())) {
+            throw new BizException("目标账号不是学院管理员");
+        }
+        user.setPassword(PasswordUtils.sha256("123456"));
+        user.setMustChangePassword(true);
+        userAccountMapper.updateById(user);
+        insertAudit("OPERATION", loginUser.id(), "重置学院管理员密码", user.getName() + " / " + user.getAccount());
+    }
+
+    @Transactional
+    public void changeCollegeAdminStatus(LoginUser loginUser, String userId, String status) {
+        requireRole(loginUser, RoleType.SUPER_ADMIN);
+        UserAccountEntity user = requireUser(userId);
+        if (!RoleType.COLLEGE_ADMIN.name().equals(user.getRole())) {
+            throw new BizException("目标账号不是学院管理员");
+        }
+        String normalizedStatus = Optional.ofNullable(status).map(String::trim).orElse("");
+        if (!Set.of("ACTIVE", "DISABLED").contains(normalizedStatus)) {
+            throw new BizException("学院管理员账号状态仅支持 ACTIVE 或 DISABLED");
+        }
+        user.setStatus(normalizedStatus);
+        userAccountMapper.updateById(user);
+        insertAudit("OPERATION", loginUser.id(), "更新学院管理员账号状态", user.getName() + " -> " + normalizedStatus);
     }
 
     public Map<String, Object> basicData(LoginUser loginUser) {
@@ -2256,12 +2478,38 @@ public class PhaseOneService {
         return entity;
     }
 
+    private void ensureMentorTeacherReviewable(MentorApplicationEntity entity) {
+        if (!MentorApplicationStatus.PENDING_TEACHER.getLabel().equals(entity.getStatus())) {
+            throw new BizException("当前状态不可由教师处理");
+        }
+    }
+
+    private void ensureMentorCollegeReviewable(LoginUser loginUser, MentorApplicationEntity entity) {
+        TeacherEntity teacher = requireTeacher(entity.getTeacherId());
+        if (!Objects.equals(teacher.getCollegeId(), loginUser.collegeId())) {
+            throw new BizException("无权处理该指导申请");
+        }
+        if (!MentorApplicationStatus.PENDING_COLLEGE.getLabel().equals(entity.getStatus())) {
+            throw new BizException("当前状态不可由学院复核");
+        }
+    }
+
     private InternshipApplicationEntity requireInternshipApplication(String applicationId) {
         InternshipApplicationEntity entity = internshipApplicationMapper.selectById(applicationId);
         if (entity == null) {
             throw new BizException("实习申请不存在");
         }
         return entity;
+    }
+
+    private void ensureInternshipReviewable(LoginUser loginUser, InternshipApplicationEntity entity) {
+        StudentEntity student = requireStudent(entity.getStudentId());
+        if (!Objects.equals(student.getCollegeId(), loginUser.collegeId())) {
+            throw new BizException("无权审批该实习申请");
+        }
+        if (!InternshipApplicationStatus.PENDING_COLLEGE.getLabel().equals(entity.getStatus())) {
+            throw new BizException("当前状态不可重复审批");
+        }
     }
 
     private FormTemplateEntity requireTemplate(String code) {
@@ -2280,10 +2528,41 @@ public class PhaseOneService {
         return entity;
     }
 
+    private void ensureStudentCanEditForm(FormInstanceEntity entity) {
+        if (!Set.of(
+                FormStatus.DRAFT.getLabel(),
+                FormStatus.TEACHER_RETURNED.getLabel(),
+                FormStatus.COLLEGE_RETURNED.getLabel()
+        ).contains(entity.getStatus())) {
+            throw new BizException("当前状态不可修改表单");
+        }
+    }
+
+    private void ensureTeacherCanReviewForm(FormInstanceEntity entity) {
+        if (!FormStatus.TEACHER_REVIEWING.getLabel().equals(entity.getStatus())) {
+            throw new BizException("当前状态不可由教师审核");
+        }
+    }
+
     private void ensureCollegeAdminFormAccess(LoginUser loginUser, FormInstanceEntity entity) {
         StudentEntity student = requireStudent(entity.getStudentId());
         if (!Objects.equals(student.getCollegeId(), loginUser.collegeId())) {
             throw new BizException("无权处理该表单");
+        }
+    }
+
+    private void ensureCollegeCanReviewForm(FormInstanceEntity entity) {
+        if (!FormStatus.COLLEGE_REVIEWING.getLabel().equals(entity.getStatus())) {
+            throw new BizException("当前状态不可由学院处理");
+        }
+    }
+
+    private void ensureEvaluationConfirmable(EvaluationRecordEntity entity) {
+        if (!Boolean.TRUE.equals(entity.getSubmittedToCollege())) {
+            throw new BizException("教师尚未提交评价，当前不可确认");
+        }
+        if (Boolean.TRUE.equals(entity.getConfirmedByCollege())) {
+            throw new BizException("该评价已完成学院确认");
         }
     }
 

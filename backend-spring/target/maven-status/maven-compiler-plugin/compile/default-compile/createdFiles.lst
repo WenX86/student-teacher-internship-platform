@@ -45,8 +45,10 @@ com\internship\platform\dto\Requests$GuidanceRecordCreateRequest.class
 com\internship\platform\dto\Requests$TeacherCreateRequest.class
 com\internship\platform\mapper\FormTemplateMapper.class
 com\internship\platform\common\ApiResponse.class
+com\internship\platform\service\BatchImportService$CsvImportRow.class
 com\internship\platform\util\IdGenerator.class
 com\internship\platform\InternshipPlatformApplication.class
+com\internship\platform\controller\FileController.class
 com\internship\platform\util\PasswordUtils.class
 com\internship\platform\dto\Requests$InternshipReviewRequest.class
 com\internship\platform\mapper\AuditLogMapper.class
@@ -62,10 +64,12 @@ com\internship\platform\config\SecurityConfig.class
 com\internship\platform\security\TokenSessionService.class
 com\internship\platform\mapper\EvaluationRecordMapper.class
 com\internship\platform\mapper\StudentMapper.class
+com\internship\platform\service\LocalFileStorageService.class
 com\internship\platform\mapper\FormInstanceMapper.class
 com\internship\platform\dto\Requests$OrganizationCreateRequest.class
 com\internship\platform\dto\Requests$StudentCreateRequest.class
 com\internship\platform\constant\InternshipType.class
+com\internship\platform\service\BatchImportService.class
 com\internship\platform\dto\Requests$FormSaveRequest.class
 com\internship\platform\entity\AuditLogEntity.class
 com\internship\platform\security\TokenAuthenticationFilter.class

@@ -18,3 +18,24 @@ yarn-error.log
 # 系统文件
 .DS_Store
 Thumbs.db
+
+# 日志文件（彻底拦截所有运行日志，杜绝本次问题复现）
+*.log
+*.out
+*.log.*
+*.out.*
+logs/
+log/
+
+# Spring Boot 运行临时文件
+*.tmp
+*.bak
+*.swp
+*~
+*.class
+
+# 本地环境配置（避免开发环境配置泄露）
+application-dev.yml
+application-local.yml
+.env
+.env.*

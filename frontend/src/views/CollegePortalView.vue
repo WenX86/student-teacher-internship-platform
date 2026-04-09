@@ -6,9 +6,11 @@ import { ElMessageBox } from "element-plus";
 import { downloadFile, get, patch, post, request } from "../api/http";
 import FilterTablePanel from "../components/FilterTablePanel.vue";
 import { useFilteredPagination } from "../composables/useFilteredPagination";
+import { useMessageStore } from "../stores/message";
 import { getMessageTypeMeta, getReadStatusMeta, getStatusMeta } from "../utils/status";
 
 const route = useRoute();
+const messageStore = useMessageStore();
 const loading = ref(false);
 const dashboard = ref({});
 const students = ref([]);
@@ -30,6 +32,7 @@ const organizationDialog = ref(false);
 const mentorDialog = ref(false);
 const internshipDialog = ref(false);
 const archiveDialog = ref(false);
+const modificationDialog = ref(false);
 const evaluationDialog = ref(false);
 const currentRow = ref(null);
 const archiveDialogMode = ref("single");
@@ -41,7 +44,7 @@ const teacherImportInput = ref(null);
 const latestStudentImportResult = ref(null);
 const latestTeacherImportResult = ref(null);
 
-const pageSize = 5;
+const pageSize = 10;
 const messagePageSize = 10;
 
 const studentForm = reactive({ name: "", studentNo: "", major: "", className: "", phone: "", internshipType: "TEACHING" });
@@ -56,11 +59,12 @@ const internshipReviewForm = reactive({
   comment: "",
 });
 const archiveReviewForm = reactive({ approved: true, score: 90, comment: "" });
+const modificationReviewForm = reactive({ approved: true, comment: "" });
 const evaluationReviewForm = reactive({ collegeScore: 90, collegeComment: "" });
 
 const pendingMentorApplications = computed(() => mentorApplications.value.filter((item) => item.status === "待学院复核"));
 const pendingInternshipApplications = computed(() => internshipApplications.value.filter((item) => item.status === "待学院审批"));
-const archiveForms = computed(() => forms.value.filter((item) => ["学院审核中", "已归档", "学院退回"].includes(item.status)));
+const archiveForms = computed(() => forms.value.filter((item) => ["学院审核中", "已归档", "学院退回", "修改申请中", "允许修改"].includes(item.status)));
 const riskForms = computed(() => forms.value.filter((item) => ["教师退回", "学院退回"].includes(item.status)));
 const pendingEvaluationRecords = computed(() => evaluations.value.filter((item) => item.submittedToCollege && !item.confirmedByCollege && !item.returnedByCollege));
 const actionableArchiveRows = computed(() => archiveSelection.value.filter((item) => item.status === "学院审核中"));
@@ -380,6 +384,7 @@ async function loadAll() {
         get("/risk-alerts"),
       ]);
     dashboard.value = dashboardData;
+    messageStore.syncUnreadCount(dashboardData?.unreadMessages || 0);
     students.value = studentData;
     teachers.value = teacherData;
     mentorApplications.value = mentorData;
@@ -945,6 +950,13 @@ function openArchiveReview(row) {
   archiveDialog.value = true;
 }
 
+function openModificationReview(row) {
+  currentRow.value = row;
+  modificationReviewForm.approved = true;
+  modificationReviewForm.comment = row.modificationReviewComment || "";
+  modificationDialog.value = true;
+}
+
 function openBatchArchiveReview(approved) {
   if (!actionableArchiveRows.value.length) {
     ElMessage.warning("当前没有可批量归档的表单");
@@ -1154,6 +1166,25 @@ async function submitArchiveReview() {
   }
 }
 
+async function submitModificationReview() {
+  if (!currentRow.value) {
+    ElMessage.warning("请先选择要审批的修改申请");
+    return;
+  }
+  try {
+    await post(`/forms/${currentRow.value.id}/modification-review`, {
+      approved: modificationReviewForm.approved,
+      comment: modificationReviewForm.comment,
+    });
+    ElMessage.success("修改申请已处理");
+    modificationDialog.value = false;
+    currentRow.value = null;
+    await loadAll();
+  } catch (error) {
+    ElMessage.error(error.message);
+  }
+}
+
 function openEvaluationReview(row) {
   if (!canConfirmEvaluation(row)) {
     ElMessage.warning("当前评价暂不能由学院确认");
@@ -1196,6 +1227,28 @@ async function markRead(row) {
     await loadAll();
   } catch (error) {
     ElMessage.error(error.message);
+  }
+}
+
+async function markAllRead() {
+  if (!unreadCollegeMessages.value.length) {
+    ElMessage.info("当前没有未读消息。");
+    return;
+  }
+
+  try {
+    await ElMessageBox.confirm(`确认将 ${unreadCollegeMessages.value.length} 条未读消息全部标记为已读？`, "全部已读", {
+      confirmButtonText: "全部已读",
+      cancelButtonText: "取消",
+      type: "warning",
+    });
+    const result = await post("/messages/read-all", {});
+    ElMessage.success(`已将 ${result?.updatedCount || unreadCollegeMessages.value.length} 条消息标记为已读`);
+    await loadAll();
+  } catch (error) {
+    if (error !== "cancel") {
+      ElMessage.error(error.message);
+    }
   }
 }
 
@@ -1457,6 +1510,11 @@ watch(messageReadFilter, () => {
               <el-tag :type="getStatusMeta(row.status).type">{{ getStatusMeta(row.status).label }}</el-tag>
             </template>
           </el-table-column>
+          <el-table-column label="修改原因" min-width="220">
+            <template #default="{ row }">
+              <span :class="row.modificationReason ? '' : 'subtle'">{{ row.modificationReason || "暂无修改申请" }}</span>
+            </template>
+          </el-table-column>
           <el-table-column label="内容摘要" min-width="260">
             <template #default="{ row }">
               <div>{{ row.content?.title || "暂无标题" }}</div>
@@ -1480,6 +1538,13 @@ watch(messageReadFilter, () => {
             </template>
           </el-table-column>
           <el-table-column prop="score" label="成绩" width="90" />
+          <el-table-column label="操作" width="120">
+            <template #default="{ row }">
+              <el-button v-if="row.status === '修改申请中'" link type="primary" @click="openModificationReview(row)">审批修改</el-button>
+              <span v-else-if="row.status === '允许修改'" class="subtle">已允许修改</span>
+              <span v-else class="subtle">-</span>
+            </template>
+          </el-table-column>
           <template #empty><el-empty description="暂无归档数据" /></template>
         </el-table>
       </FilterTablePanel>
@@ -1664,7 +1729,10 @@ watch(messageReadFilter, () => {
           <h2>消息中心</h2>
           <div class="subtle">集中查看学院待办、催办提醒和系统反馈消息。</div>
         </div>
-        <el-tag type="warning">未读 {{ unreadCollegeMessages.length }} 条</el-tag>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <el-tag type="warning">未读 {{ unreadCollegeMessages.length }} 条</el-tag>
+          <el-button link type="primary" :disabled="!unreadCollegeMessages.length" @click="markAllRead">全部已读</el-button>
+        </div>
       </div>
       <FilterTablePanel v-model:keyword="messageKeyword" v-model:current-page="messagePage" placeholder="筛选类型、标题、内容" :total="filteredMessages.length" :page-size="messagePageSize">
         <template #toolbar-extra>
@@ -1776,6 +1844,24 @@ watch(messageReadFilter, () => {
         <el-form-item label="学院意见"><el-input v-model="archiveReviewForm.comment" type="textarea" :rows="4" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="archiveDialog = false">取消</el-button><el-button type="primary" color="#0f766e" @click="submitArchiveReview">提交</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="modificationDialog" title="修改申请审批" width="520px">
+      <el-form label-position="top">
+        <el-form-item label="修改原因">
+          <el-input :model-value="currentRow?.modificationReason || '暂无修改原因'" type="textarea" :rows="4" disabled />
+        </el-form-item>
+        <el-form-item label="审批结果">
+          <el-switch v-model="modificationReviewForm.approved" inline-prompt active-text="通过" inactive-text="驳回" />
+        </el-form-item>
+        <el-form-item label="审批意见">
+          <el-input v-model="modificationReviewForm.comment" type="textarea" :rows="4" placeholder="可填写允许修改的补充说明或驳回原因" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="modificationDialog = false">取消</el-button>
+        <el-button type="primary" color="#0f766e" @click="submitModificationReview">提交</el-button>
+      </template>
     </el-dialog>
 
     <el-dialog v-model="evaluationDialog" title="评价确认" width="620px">

@@ -11,6 +11,8 @@ const statusMetaMap = {
   "已通过": { label: "已通过", type: "success" },
   "已生效": { label: "已生效", type: "success" },
   "已归档": { label: "已归档", type: "success" },
+  "修改申请中": { label: "修改申请中", type: "warning" },
+  "允许修改": { label: "允许修改", type: "success" },
   "已确认": { label: "已确认", type: "success" },
   "已审批": { label: "已审批", type: "success" },
   "待审核": { label: "待审核", type: "warning" },

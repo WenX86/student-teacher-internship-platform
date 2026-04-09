@@ -1,4 +1,5 @@
-﻿import { ElButton } from "element-plus/es/components/button/index";
+import { ElBadge } from "element-plus/es/components/badge/index";
+import { ElButton } from "element-plus/es/components/button/index";
 import { ElCheckbox } from "element-plus/es/components/checkbox/index";
 import { ElCol } from "element-plus/es/components/col/index";
 import { ElContainer, ElAside, ElHeader, ElMain } from "element-plus/es/components/container/index";
@@ -22,6 +23,7 @@ import { ElTable, ElTableColumn } from "element-plus/es/components/table/index";
 import { ElTag } from "element-plus/es/components/tag/index";
 
 import "element-plus/es/components/aside/style/css";
+import "element-plus/es/components/badge/style/css";
 import "element-plus/es/components/button/style/css";
 import "element-plus/es/components/checkbox/style/css";
 import "element-plus/es/components/col/style/css";
@@ -56,6 +58,7 @@ import "element-plus/es/components/tag/style/css";
 
 const components = [
   ElAside,
+  ElBadge,
   ElButton,
   ElCheckbox,
   ElCol,

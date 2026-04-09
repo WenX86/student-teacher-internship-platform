@@ -374,6 +374,41 @@ class MessageNotificationIntegrationTest {
         }
     }
 
+    @Test
+    void shouldMarkAllMessagesReadForCurrentUser() throws Exception {
+        String studentToken = login("20230002", "123456");
+        String teacherToken = login("T1002", "123456");
+
+        mockMvc.perform(post("/api/mentor-applications/{id}/teacher-review", "mentor-app-002")
+                        .header("Authorization", bearer(teacherToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "approved": false,
+                                  "comment": "全部已读测试消息"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        JsonNode messagesBefore = listMessages(studentToken);
+        long unreadBefore = countUnreadMessages(messagesBefore);
+        assertThat(unreadBefore).isGreaterThan(0);
+
+        JsonNode result = readData(
+                mockMvc.perform(post("/api/messages/read-all")
+                                .header("Authorization", bearer(studentToken)))
+                        .andExpect(status().isOk())
+                        .andReturn()
+        );
+        assertThat(result.path("updatedCount").asLong()).isEqualTo(unreadBefore);
+
+        JsonNode messagesAfter = listMessages(studentToken);
+        assertThat(countUnreadMessages(messagesAfter)).isZero();
+        for (JsonNode item : messagesAfter) {
+            assertThat(item.path("read").asBoolean()).isTrue();
+        }
+    }
+
     private JsonNode listMessages(String token) throws Exception {
         return readData(
                 mockMvc.perform(get("/api/messages")
@@ -446,6 +481,16 @@ class MessageNotificationIntegrationTest {
             }
         }
         throw new IllegalStateException("message not found by link: " + link);
+    }
+
+    private long countUnreadMessages(JsonNode messages) {
+        long count = 0;
+        for (JsonNode item : messages) {
+            if (!item.path("read").asBoolean()) {
+                count += 1;
+            }
+        }
+        return count;
     }
 
     private JsonNode findById(JsonNode array, String id) {

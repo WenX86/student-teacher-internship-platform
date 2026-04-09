@@ -125,6 +125,7 @@ class StateFlowIntegrationTest {
                 .andExpect(status().isBadRequest());
 
         makeMentorEffectiveForStudent002();
+        approveInternshipApplicationForStudent002();
 
         mockMvc.perform(post("/api/internship-applications/{id}/review", "internship-app-002")
                         .header("Authorization", bearer(collegeToken))
@@ -162,14 +163,13 @@ class StateFlowIntegrationTest {
         JsonNode student = findByValue(listStudents(collegeToken), "studentNo", "20230002");
         assertThat(student.path("internshipStatus").asText()).isEqualTo("实习中");
     }
-
     @Test
     void shouldEnforceFormReviewAndEditStateFlow() throws Exception {
         String studentToken = login("20230002", "123456");
         String teacherToken = login("T1002", "123456");
-        String collegeToken = login("college01", "123456");
 
         makeMentorEffectiveForStudent002();
+        approveInternshipApplicationForStudent002();
 
         mockMvc.perform(post("/api/forms/{id}/teacher-review", "form-003")
                         .header("Authorization", bearer(teacherToken))
@@ -191,7 +191,7 @@ class StateFlowIntegrationTest {
                                   "templateCode": "class-duty-record",
                                   "content": {
                                     "title": "班主任值守记录第1版",
-                                    "summary": "完成晨检、班级巡查和纪律提醒"
+                                    "summary": "完成早读检查、班级巡查和纪律提醒"
                                   },
                                   "submit": true,
                                   "attachments": []
@@ -202,18 +202,6 @@ class StateFlowIntegrationTest {
         JsonNode submittedForm = findById(listForms(studentToken), "form-003");
         assertThat(submittedForm.path("status").asText()).isEqualTo(FormStatus.TEACHER_REVIEWING.getLabel());
         assertThat(submittedForm.path("version").asInt()).isEqualTo(2);
-
-        mockMvc.perform(post("/api/forms/{id}/college-review", "form-003")
-                        .header("Authorization", bearer(collegeToken))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "approved": true,
-                                  "score": 95,
-                                  "comment": "未经过教师审核"
-                                }
-                                """))
-                .andExpect(status().isBadRequest());
 
         mockMvc.perform(post("/api/forms/{id}/teacher-review", "form-003")
                         .header("Authorization", bearer(teacherToken))
@@ -227,9 +215,9 @@ class StateFlowIntegrationTest {
                                 """))
                 .andExpect(status().isOk());
 
-        JsonNode afterTeacherReview = findById(listForms(collegeToken), "form-003");
-        assertThat(afterTeacherReview.path("status").asText()).isEqualTo(FormStatus.COLLEGE_REVIEWING.getLabel());
-        assertThat(afterTeacherReview.path("teacherReviewedAt").asText()).isNotBlank();
+        JsonNode archivedForm = findById(listForms(studentToken), "form-003");
+        assertThat(archivedForm.path("status").asText()).isEqualTo(FormStatus.ARCHIVED.getLabel());
+        assertThat(archivedForm.path("teacherReviewedAt").asText()).isNotBlank();
 
         mockMvc.perform(post("/api/forms/{id}/teacher-review", "form-003")
                         .header("Authorization", bearer(teacherToken))
@@ -238,43 +226,10 @@ class StateFlowIntegrationTest {
                                 {
                                   "approved": false,
                                   "score": 80,
-                                  "comment": "重复处理"
+                                  "comment": "已归档后不能再审"
                                 }
                                 """))
                 .andExpect(status().isBadRequest());
-
-        mockMvc.perform(post("/api/forms/{id}/college-review", "form-003")
-                        .header("Authorization", bearer(collegeToken))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "approved": true,
-                                  "score": 94,
-                                  "comment": "学院归档通过"
-                                }
-                                """))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(put("/api/forms/{id}", "form-003")
-                        .header("Authorization", bearer(studentToken))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "templateCode": "class-duty-record",
-                                  "content": {
-                                    "title": "归档后尝试修改",
-                                    "summary": "这次修改应被拦截"
-                                  },
-                                  "submit": false,
-                                  "attachments": []
-                                }
-                                """))
-                .andExpect(status().isBadRequest());
-
-        JsonNode archivedForm = findById(listForms(collegeToken), "form-003");
-        assertThat(archivedForm.path("status").asText()).isEqualTo(FormStatus.ARCHIVED.getLabel());
-        assertThat(archivedForm.path("collegeReviewedAt").asText()).isNotBlank();
-        assertThat(archivedForm.path("score").asInt()).isEqualTo(94);
     }
 
     @Test
@@ -322,6 +277,7 @@ class StateFlowIntegrationTest {
         String collegeToken = login("college01", "123456");
 
         makeMentorEffectiveForStudent002();
+        approveInternshipApplicationForStudent002();
 
         mockMvc.perform(put("/api/forms/{id}", "form-003")
                         .header("Authorization", bearer(studentToken))
@@ -434,6 +390,7 @@ class StateFlowIntegrationTest {
         String collegeToken = login("college01", "123456");
 
         makeMentorEffectiveForStudent002();
+        approveInternshipApplicationForStudent002();
 
         mockMvc.perform(post("/api/internship-applications/{id}/review", "internship-app-002")
                         .header("Authorization", bearer(collegeToken))
@@ -482,6 +439,7 @@ class StateFlowIntegrationTest {
         String collegeToken = login("college01", "123456");
 
         makeMentorEffectiveForStudent002();
+        approveInternshipApplicationForStudent002();
 
         mockMvc.perform(put("/api/forms/{id}", "form-003")
                         .header("Authorization", bearer(studentToken))
@@ -698,6 +656,96 @@ class StateFlowIntegrationTest {
         );
         assertThat(editAfterConfirmRoot.path("message").asText()).contains("学院已确认该评价");
     }
+    @Test
+    void shouldAllowArchivedFormModificationRequestAndResubmission() throws Exception {
+        String studentToken = login("20230002", "123456");
+        String teacherToken = login("T1002", "123456");
+        String collegeToken = login("college01", "123456");
+
+        makeMentorEffectiveForStudent002();
+        approveInternshipApplicationForStudent002();
+
+        mockMvc.perform(put("/api/forms/{id}", "form-003")
+                        .header("Authorization", bearer(studentToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "templateCode": "class-duty-record",
+                                  "content": {
+                                    "title": "归档修改测试表单",
+                                    "summary": "先完成归档，再申请修改"
+                                  },
+                                  "submit": true,
+                                  "attachments": []
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/forms/{id}/teacher-review", "form-003")
+                        .header("Authorization", bearer(teacherToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "approved": true,
+                                  "score": 91,
+                                  "comment": "教师审核通过"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        JsonNode archivedForm = findById(listForms(studentToken), "form-003");
+        assertThat(archivedForm.path("status").asText()).isEqualTo(FormStatus.ARCHIVED.getLabel());
+        int archivedVersion = archivedForm.path("version").asInt();
+
+        mockMvc.perform(post("/api/forms/{id}/modification-request", "form-003")
+                        .header("Authorization", bearer(studentToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reason": "补充归档后的教学记录"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        JsonNode requestingForm = findById(listForms(collegeToken), "form-003");
+        assertThat(requestingForm.path("status").asText()).isEqualTo(FormStatus.MODIFICATION_REQUESTING.getLabel());
+        assertThat(requestingForm.path("modificationReason").asText()).isEqualTo("补充归档后的教学记录");
+
+        mockMvc.perform(post("/api/forms/{id}/modification-review", "form-003")
+                        .header("Authorization", bearer(collegeToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "approved": true,
+                                  "comment": "同意修改"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        JsonNode allowedForm = findById(listForms(studentToken), "form-003");
+        assertThat(allowedForm.path("status").asText()).isEqualTo(FormStatus.MODIFICATION_ALLOWED.getLabel());
+        assertThat(allowedForm.path("modificationReviewComment").asText()).isEqualTo("同意修改");
+
+        mockMvc.perform(put("/api/forms/{id}", "form-003")
+                        .header("Authorization", bearer(studentToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "templateCode": "class-duty-record",
+                                  "content": {
+                                    "title": "归档修改后的表单",
+                                    "summary": "修改后重新提交"
+                                  },
+                                  "submit": true,
+                                  "attachments": []
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        JsonNode resubmittedForm = findById(listForms(studentToken), "form-003");
+        assertThat(resubmittedForm.path("status").asText()).isEqualTo(FormStatus.TEACHER_REVIEWING.getLabel());
+        assertThat(resubmittedForm.path("version").asInt()).isEqualTo(archivedVersion + 1);
+    }
 
     private void makeMentorEffectiveForStudent002() throws Exception {
         String teacherToken = login("T1002", "123456");
@@ -730,6 +778,29 @@ class StateFlowIntegrationTest {
                                     """))
                     .andExpect(status().isOk());
         }
+    }
+
+    private void approveInternshipApplicationForStudent002() throws Exception {
+        String collegeToken = login("college01", "123456");
+
+        JsonNode application = findById(listInternshipApplications(collegeToken), "internship-app-002");
+        if (InternshipApplicationStatus.APPROVED.getLabel().equals(application.path("status").asText())) {
+            return;
+        }
+
+        mockMvc.perform(post("/api/internship-applications/{id}/review", "internship-app-002")
+                        .header("Authorization", bearer(collegeToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "approved": true,
+                                  "organizationConfirmation": "已确认接收",
+                                  "organizationFeedback": "同意安排班主任实习",
+                                  "receivedAt": "2026-03-18",
+                                  "comment": "审核通过"
+                                }
+                                """))
+                .andExpect(status().isOk());
     }
 
     private JsonNode listMentorApplications(String token) throws Exception {

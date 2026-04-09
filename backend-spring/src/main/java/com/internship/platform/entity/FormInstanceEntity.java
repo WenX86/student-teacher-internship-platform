@@ -28,5 +28,9 @@ public class FormInstanceEntity {
     private LocalDateTime submittedAt;
     private LocalDateTime teacherReviewedAt;
     private LocalDateTime collegeReviewedAt;
+    private String modificationReason;
+    private String modificationReviewComment;
+    private LocalDateTime modificationRequestedAt;
+    private LocalDateTime modificationReviewedAt;
     private String historyJson;
 }

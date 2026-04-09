@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -170,6 +171,17 @@ public class PhaseOneService {
         }
         message.setReadFlag(true);
         messageNoticeMapper.updateById(message);
+    }
+
+    @Transactional
+    public long markAllMessagesRead(LoginUser loginUser) {
+        return messageNoticeMapper.update(
+                null,
+                Wrappers.<MessageNoticeEntity>lambdaUpdate()
+                        .eq(MessageNoticeEntity::getUserId, loginUser.id())
+                        .eq(MessageNoticeEntity::getReadFlag, false)
+                        .set(MessageNoticeEntity::getReadFlag, true)
+        );
     }
 
     public List<Map<String, Object>> riskAlerts(LoginUser loginUser) {
@@ -668,6 +680,10 @@ public class PhaseOneService {
         entity.setAttachmentsJson(writeJson(Optional.ofNullable(request.attachments()).orElse(List.of())));
         entity.setTeacherComment("");
         entity.setCollegeComment("");
+        entity.setModificationReason("");
+        entity.setModificationReviewComment("");
+        entity.setModificationRequestedAt(null);
+        entity.setModificationReviewedAt(null);
         entity.setCreatedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
         entity.setSubmittedAt(Boolean.TRUE.equals(request.submit()) ? LocalDateTime.now() : null);
@@ -710,13 +726,22 @@ public class PhaseOneService {
         }
         entity.setContentJson(writeJson(request.content()));
         entity.setAttachmentsJson(writeJson(Optional.ofNullable(request.attachments()).orElse(List.of())));
-        entity.setStatus(Boolean.TRUE.equals(request.submit()) ? FormStatus.TEACHER_REVIEWING.getLabel() : FormStatus.DRAFT.getLabel());
+        boolean approvedModification = FormStatus.MODIFICATION_ALLOWED.getLabel().equals(entity.getStatus());
+        entity.setStatus(Boolean.TRUE.equals(request.submit())
+                ? FormStatus.TEACHER_REVIEWING.getLabel()
+                : (approvedModification ? FormStatus.MODIFICATION_ALLOWED.getLabel() : FormStatus.DRAFT.getLabel()));
         entity.setTeacherComment("");
         entity.setCollegeComment("");
         entity.setScore(null);
+        entity.setTeacherReviewedAt(null);
+        entity.setCollegeReviewedAt(null);
         entity.setUpdatedAt(LocalDateTime.now());
+        entity.setSubmittedAt(Boolean.TRUE.equals(request.submit()) ? LocalDateTime.now() : null);
         if (Boolean.TRUE.equals(request.submit())) {
-            entity.setSubmittedAt(LocalDateTime.now());
+            entity.setModificationReason("");
+            entity.setModificationReviewComment("");
+            entity.setModificationRequestedAt(null);
+            entity.setModificationReviewedAt(null);
         }
         entity.setHistoryJson(writeJson(history));
         formInstanceMapper.updateById(entity);
@@ -727,6 +752,91 @@ public class PhaseOneService {
                 createMessage(requireUser(teacher.getUserId()).getId(), "待办提醒", student.getName() + " 重新提交了 " + entity.getTemplateName(), "请重新审核该材料。", "/teacher/reviews");
             }
         }
+    }
+
+    @Transactional
+    public void requestFormModification(LoginUser loginUser, String formId, Requests.FormModificationRequest request) {
+        requireRole(loginUser, RoleType.STUDENT);
+        StudentEntity student = requireStudentByUser(loginUser.id());
+        FormInstanceEntity entity = formInstanceMapper.selectOne(
+                Wrappers.<FormInstanceEntity>lambdaQuery()
+                        .eq(FormInstanceEntity::getId, formId)
+                        .eq(FormInstanceEntity::getStudentId, student.getId())
+        );
+        if (entity == null) {
+            throw new BizException("表单不存在");
+        }
+        if (!FormStatus.ARCHIVED.getLabel().equals(entity.getStatus())) {
+            throw new BizException("仅已归档表单可申请修改");
+        }
+
+        String reason = Optional.ofNullable(request.reason()).orElse("").trim();
+        if (reason.isBlank()) {
+            throw new BizException("请填写修改原因");
+        }
+
+        entity.setStatus(FormStatus.MODIFICATION_REQUESTING.getLabel());
+        entity.setModificationReason(reason);
+        entity.setModificationRequestedAt(LocalDateTime.now());
+        entity.setModificationReviewComment("");
+        entity.setModificationReviewedAt(null);
+        entity.setUpdatedAt(LocalDateTime.now());
+        formInstanceMapper.updateById(entity);
+
+        UserAccountEntity collegeAdmin = userAccountMapper.selectOne(
+                Wrappers.<UserAccountEntity>lambdaQuery()
+                        .eq(UserAccountEntity::getRole, RoleType.COLLEGE_ADMIN.name())
+                        .eq(UserAccountEntity::getCollegeId, student.getCollegeId())
+                        .last("limit 1")
+        );
+        if (collegeAdmin != null) {
+            createMessage(
+                    collegeAdmin.getId(),
+                    "修改申请待审批",
+                    student.getName() + " 提交了 " + entity.getTemplateName() + " 修改申请",
+                    reason,
+                    "/college/archive"
+            );
+        }
+        insertAudit("FORM", loginUser.id(), "提交表单修改申请", entity.getTemplateName() + " - " + reason);
+    }
+
+    @Transactional
+    public void reviewFormModification(LoginUser loginUser, String formId, Requests.FormModificationReviewRequest request) {
+        requireRole(loginUser, RoleType.COLLEGE_ADMIN);
+        FormInstanceEntity entity = requireForm(formId);
+        ensureCollegeAdminFormAccess(loginUser, entity);
+        if (!FormStatus.MODIFICATION_REQUESTING.getLabel().equals(entity.getStatus())) {
+            throw new BizException("当前状态不可审批修改申请");
+        }
+
+        boolean approved = Boolean.TRUE.equals(request.approved());
+        String comment = Optional.ofNullable(request.comment()).orElse("").trim();
+        entity.setStatus(approved ? FormStatus.MODIFICATION_ALLOWED.getLabel() : FormStatus.ARCHIVED.getLabel());
+        if (approved) {
+            entity.setTeacherComment("");
+            entity.setCollegeComment("");
+            entity.setScore(null);
+            entity.setSubmittedAt(null);
+            entity.setTeacherReviewedAt(null);
+            entity.setCollegeReviewedAt(null);
+        }
+        entity.setModificationReviewComment(comment);
+        entity.setModificationReviewedAt(LocalDateTime.now());
+        entity.setUpdatedAt(LocalDateTime.now());
+        formInstanceMapper.updateById(entity);
+
+        StudentEntity student = requireStudent(entity.getStudentId());
+        createMessage(
+                requireUser(student.getUserId()).getId(),
+                approved ? "修改申请通过" : "修改申请被驳回",
+                entity.getTemplateName() + (approved ? " 修改申请已通过" : " 修改申请被驳回"),
+                approved
+                        ? "请重新编辑后再提交。"
+                        : (comment.isBlank() ? "学院未同意本次修改申请。" : comment),
+                "/student/forms"
+        );
+        insertAudit("FORM", loginUser.id(), approved ? "通过表单修改申请" : "驳回表单修改申请", entity.getTemplateName() + (comment.isBlank() ? "" : " - " + comment));
     }
 
     @Transactional
@@ -2473,6 +2583,7 @@ public class PhaseOneService {
         payload.put("todoCount", forms.stream().filter(item -> Set.of(FormStatus.DRAFT.getLabel(), FormStatus.TEACHER_RETURNED.getLabel(), FormStatus.COLLEGE_RETURNED.getLabel()).contains(item.getStatus())).count());
         payload.put("returnedCount", forms.stream().filter(item -> Set.of(FormStatus.TEACHER_RETURNED.getLabel(), FormStatus.COLLEGE_RETURNED.getLabel()).contains(item.getStatus())).count());
         payload.put("archivedCount", forms.stream().filter(item -> FormStatus.ARCHIVED.getLabel().equals(item.getStatus())).count());
+        payload.put("unreadMessages", countUnreadMessages(loginUser.id()));
         return payload;
     }
 
@@ -2493,6 +2604,7 @@ public class PhaseOneService {
         long archivedCount = forms.stream().filter(item -> FormStatus.ARCHIVED.getLabel().equals(item.getStatus())).count();
         payload.put("archivedCount", archivedCount);
         payload.put("completionRate", forms.isEmpty() ? 0 : Math.round((archivedCount * 100.0) / forms.size()));
+        payload.put("unreadMessages", countUnreadMessages(loginUser.id()));
         return payload;
     }
 
@@ -2516,6 +2628,7 @@ public class PhaseOneService {
         payload.put("pendingArchiveCount", forms.stream().filter(item -> FormStatus.COLLEGE_REVIEWING.getLabel().equals(item.getStatus())).count());
         payload.put("archivedCount", forms.stream().filter(item -> FormStatus.ARCHIVED.getLabel().equals(item.getStatus())).count());
         payload.put("riskStudentCount", forms.stream().filter(item -> Set.of(FormStatus.TEACHER_RETURNED.getLabel(), FormStatus.COLLEGE_RETURNED.getLabel()).contains(item.getStatus())).count());
+        payload.put("unreadMessages", countUnreadMessages(loginUser.id()));
         return payload;
     }
 
@@ -2527,6 +2640,14 @@ public class PhaseOneService {
         payload.put("totalForms", formInstanceMapper.selectCount(Wrappers.<FormInstanceEntity>lambdaQuery()));
         payload.put("unreadMessages", messageNoticeMapper.selectCount(Wrappers.<MessageNoticeEntity>lambdaQuery().eq(MessageNoticeEntity::getReadFlag, false)));
         return payload;
+    }
+
+    private long countUnreadMessages(String userId) {
+        return messageNoticeMapper.selectCount(
+                Wrappers.<MessageNoticeEntity>lambdaQuery()
+                        .eq(MessageNoticeEntity::getUserId, userId)
+                        .eq(MessageNoticeEntity::getReadFlag, false)
+        );
     }
 
     private Map<String, Object> toUserPayload(UserAccountEntity user) {
@@ -2632,6 +2753,10 @@ public class PhaseOneService {
         payload.put("submittedAt", item.getSubmittedAt());
         payload.put("teacherReviewedAt", item.getTeacherReviewedAt());
         payload.put("collegeReviewedAt", item.getCollegeReviewedAt());
+        payload.put("modificationReason", item.getModificationReason());
+        payload.put("modificationReviewComment", item.getModificationReviewComment());
+        payload.put("modificationRequestedAt", item.getModificationRequestedAt());
+        payload.put("modificationReviewedAt", item.getModificationReviewedAt());
         payload.put("history", readMapList(item.getHistoryJson()));
         return payload;
     }
@@ -2813,7 +2938,8 @@ public class PhaseOneService {
         if (!Set.of(
                 FormStatus.DRAFT.getLabel(),
                 FormStatus.TEACHER_RETURNED.getLabel(),
-                FormStatus.COLLEGE_RETURNED.getLabel()
+                FormStatus.COLLEGE_RETURNED.getLabel(),
+                FormStatus.MODIFICATION_ALLOWED.getLabel()
         ).contains(entity.getStatus())) {
             throw new BizException("当前状态不可修改表单");
         }
@@ -3078,8 +3204,28 @@ public class PhaseOneService {
         if (value == null || value.isBlank()) {
             return LocalDateTime.now();
         }
-        String normalized = value.contains("T") ? value : value.replace(" ", "T");
-        return LocalDateTime.parse(normalized, DateTimeFormatter.ISO_DATE_TIME);
+        String normalized = value.trim().replaceAll("\\s+", " ");
+        List<DateTimeFormatter> formatters = List.of(
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"),
+                DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"),
+                DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"),
+                DateTimeFormatter.ISO_LOCAL_DATE_TIME,
+                DateTimeFormatter.ISO_DATE_TIME
+        );
+        for (DateTimeFormatter formatter : formatters) {
+            try {
+                return LocalDateTime.parse(normalized, formatter);
+            } catch (DateTimeParseException ignored) {
+                // try next format
+            }
+            try {
+                return LocalDateTime.parse(normalized.replace(" ", "T"), formatter);
+            } catch (DateTimeParseException ignored) {
+                // try next format
+            }
+        }
+        throw new BizException("指导时间格式不正确，请使用 YYYY-MM-DD HH:mm");
     }
 
     private String toMonthKey(LocalDateTime value, DateTimeFormatter formatter) {

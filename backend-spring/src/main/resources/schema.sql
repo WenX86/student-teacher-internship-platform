@@ -136,6 +136,10 @@ CREATE TABLE form_instance (
     submitted_at TIMESTAMP,
     teacher_reviewed_at TIMESTAMP,
     college_reviewed_at TIMESTAMP,
+    modification_reason VARCHAR(255),
+    modification_review_comment VARCHAR(255),
+    modification_requested_at TIMESTAMP,
+    modification_reviewed_at TIMESTAMP,
     history_json CLOB
 );
 

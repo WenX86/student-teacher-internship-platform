@@ -1,6 +1,7 @@
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\common\ApiResponse.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\common\BizException.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\common\GlobalExceptionHandler.java
+D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\config\FormInstanceSchemaMigrator.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\config\SecurityConfig.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\config\WebMvcConfig.java
 D:\CFile\师范生实习记录平台\backend-spring\src\main\java\com\internship\platform\constant\FormStatus.java

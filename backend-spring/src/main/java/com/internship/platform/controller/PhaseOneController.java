@@ -63,6 +63,12 @@ public class PhaseOneController {
         return ApiResponse.ok();
     }
 
+    @PostMapping("/messages/read-all")
+    public ApiResponse<Map<String, Object>> markAllMessagesRead() {
+        long updatedCount = phaseOneService.markAllMessagesRead(phaseOneService.currentLoginUser());
+        return ApiResponse.ok(Map.of("updatedCount", updatedCount));
+    }
+
     @GetMapping("/students")
     public ApiResponse<List<Map<String, Object>>> students() {
         return ApiResponse.ok(phaseOneService.students(phaseOneService.currentLoginUser()));
@@ -205,6 +211,18 @@ public class PhaseOneController {
     @PutMapping("/forms/{id}")
     public ApiResponse<Void> updateForm(@PathVariable String id, @Valid @RequestBody Requests.FormSaveRequest request) {
         phaseOneService.updateForm(phaseOneService.currentLoginUser(), id, request);
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/forms/{id}/modification-request")
+    public ApiResponse<Void> requestFormModification(@PathVariable String id, @Valid @RequestBody Requests.FormModificationRequest request) {
+        phaseOneService.requestFormModification(phaseOneService.currentLoginUser(), id, request);
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/forms/{id}/modification-review")
+    public ApiResponse<Void> reviewFormModification(@PathVariable String id, @Valid @RequestBody Requests.FormModificationReviewRequest request) {
+        phaseOneService.reviewFormModification(phaseOneService.currentLoginUser(), id, request);
         return ApiResponse.ok();
     }
 

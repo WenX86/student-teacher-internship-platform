@@ -12,13 +12,31 @@
 [INFO] Copying 4 resources from src\main\resources to target\classes
 [INFO] 
 [INFO] --- compiler:3.13.0:compile (default-compile) @ internship-platform-backend ---
-[INFO] Nothing to compile - all classes are up to date.
+[INFO] Recompiling the module because of added or removed source files.
+[INFO] Compiling 56 source files with javac [debug parameters release 21] to target\classes
+[INFO] 由于在类路径中发现了一个或多个处理程序，因此启用了
+  批注处理。未来发行版的 javac 可能会禁用批注处理，
+  除非至少按名称指定了一个处理程序 (-processor)，
+  或指定了搜索路径 (--processor-path, --processor-module-path)，
+  或显式启用了批注处理 (-proc:only, -proc:full)。
+  可使用 -Xlint:-options 隐藏此消息。
+  可使用 -proc:none 禁用批注处理。
+[INFO] /C:/Users/32468/AppData/Local/Temp/internship-platform-backend-spring/src/main/java/com/internship/platform/service/PhaseOneService.java: C:\Users\32468\AppData\Local\Temp\internship-platform-backend-spring\src\main\java\com\internship\platform\service\PhaseOneService.java使用或覆盖了已过时的 API。
+[INFO] /C:/Users/32468/AppData/Local/Temp/internship-platform-backend-spring/src/main/java/com/internship/platform/service/PhaseOneService.java: 有关详细信息, 请使用 -Xlint:deprecation 重新编译。
 [INFO] 
 [INFO] --- resources:3.3.1:testResources (default-testResources) @ internship-platform-backend ---
 [INFO] skip non existing resourceDirectory C:\Users\32468\AppData\Local\Temp\internship-platform-backend-spring\src\test\resources
 [INFO] 
 [INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ internship-platform-backend ---
-[INFO] Nothing to compile - all classes are up to date.
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 5 source files with javac [debug parameters release 21] to target\test-classes
+[INFO] 由于在类路径中发现了一个或多个处理程序，因此启用了
+  批注处理。未来发行版的 javac 可能会禁用批注处理，
+  除非至少按名称指定了一个处理程序 (-processor)，
+  或指定了搜索路径 (--processor-path, --processor-module-path)，
+  或显式启用了批注处理 (-proc:only, -proc:full)。
+  可使用 -Xlint:-options 隐藏此消息。
+  可使用 -proc:none 禁用批注处理。
 [INFO] 
 [INFO] <<< spring-boot:3.3.5:run (default-cli) < test-compile @ internship-platform-backend <<<
 [INFO] 
@@ -35,35 +53,8 @@
 
  :: Spring Boot ::                (v3.3.5)
 
-2026-04-08 20:20:29 [main] INFO  c.i.p.InternshipPlatformApplication - Starting InternshipPlatformApplication using Java 21.0.8 with PID 18540 (C:\Users\32468\AppData\Local\Temp\internship-platform-backend-spring\target\classes started by 32468 in C:\Users\32468\AppData\Local\Temp\internship-platform-backend-spring).replace('password=','password=***'2026-04-08 20:20:29 [main] INFO  c.i.p.InternshipPlatformApplication - No active profile set, falling back to 1 default profile: "default".replace('password=','password=***'2026-04-08 20:20:31 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http).replace('password=','password=***'2026-04-08 20:20:31 [main] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat].replace('password=','password=***'2026-04-08 20:20:31 [main] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.31].replace('password=','password=***'2026-04-08 20:20:31 [main] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext.replace('password=','password=***'2026-04-08 20:20:31 [main] INFO  o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 1725 ms.replace('password=','password=***' _ _   |_  _ _|_. ___ _ |    _ 
+2026-04-09 16:21:04 [main] INFO  c.i.p.InternshipPlatformApplication - Starting InternshipPlatformApplication using Java 21.0.8 with PID 12040 (C:\Users\32468\AppData\Local\Temp\internship-platform-backend-spring\target\classes started by 32468 in C:\Users\32468\AppData\Local\Temp\internship-platform-backend-spring).replace('password=','password=***'2026-04-09 16:21:04 [main] INFO  c.i.p.InternshipPlatformApplication - No active profile set, falling back to 1 default profile: "default".replace('password=','password=***'2026-04-09 16:21:06 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http).replace('password=','password=***'2026-04-09 16:21:06 [main] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat].replace('password=','password=***'2026-04-09 16:21:06 [main] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.31].replace('password=','password=***'2026-04-09 16:21:06 [main] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext.replace('password=','password=***'2026-04-09 16:21:06 [main] INFO  o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 1679 ms.replace('password=','password=***' _ _   |_  _ _|_. ___ _ |    _ 
 | | |\/|_)(_| | |_\  |_)||_|_\ 
      /               |         
                         3.5.8 
-2026-04-08 20:20:33 [main] INFO  o.s.s.c.a.a.c.InitializeUserDetailsBeanManagerConfigurer$InitializeUserDetailsManagerConfigurer - Global AuthenticationManager configured with UserDetailsService bean with name inMemoryUserDetailsManager.replace('password=','password=***'2026-04-08 20:20:33 [main] WARN  o.s.b.w.s.c.AnnotationConfigServletWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'.replace('password=','password=***'2026-04-08 20:20:33 [main] INFO  o.s.b.a.l.ConditionEvaluationReportLogger - 
-
-Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled..replace('password=','password=***'2026-04-08 20:20:33 [main] ERROR o.s.b.d.LoggingFailureAnalysisReporter - 
-
-***************************
-APPLICATION FAILED TO START
-***************************
-
-Description:
-
-Web server failed to start. Port 8080 was already in use.
-
-Action:
-
-Identify and stop the process that's listening on port 8080 or configure this application to listen on another port.
-.replace('password=','password=***'[INFO] ------------------------------------------------------------------------
-[INFO] BUILD FAILURE
-[INFO] ------------------------------------------------------------------------
-[INFO] Total time:  8.407 s
-[INFO] Finished at: 2026-04-08T20:20:33+08:00
-[INFO] ------------------------------------------------------------------------
-[ERROR] Failed to execute goal org.springframework.boot:spring-boot-maven-plugin:3.3.5:run (default-cli) on project internship-platform-backend: Process terminated with exit code: 1 -> [Help 1]
-[ERROR] 
-[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
-[ERROR] Re-run Maven using the -X switch to enable full debug logging.
-[ERROR] 
-[ERROR] For more information about the errors and possible solutions, please read the following articles:
-[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException
+2026-04-09 16:21:07 [main] INFO  o.s.s.c.a.a.c.InitializeUserDetailsBeanManagerConfigurer$InitializeUserDetailsManagerConfigurer - Global AuthenticationManager configured with UserDetailsService bean with name inMemoryUserDetailsManager.replace('password=','password=***'2026-04-09 16:21:07 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'.replace('password=','password=***'2026-04-09 16:21:07 [main] INFO  c.i.p.InternshipPlatformApplication - Started InternshipPlatformApplication in 4.034 seconds (process running for 4.529).replace('password=','password=***'2026-04-09 16:21:08 [main] INFO  c.i.p.c.FormInstanceSchemaMigrator - Added missing column modification_reason to form_instance.replace('password=','password=***'2026-04-09 16:21:08 [main] INFO  c.i.p.c.FormInstanceSchemaMigrator - Added missing column modification_review_comment to form_instance.replace('password=','password=***'2026-04-09 16:21:08 [main] INFO  c.i.p.c.FormInstanceSchemaMigrator - Added missing column modification_requested_at to form_instance.replace('password=','password=***'2026-04-09 16:21:08 [main] INFO  c.i.p.c.FormInstanceSchemaMigrator - Added missing column modification_reviewed_at to form_instance.replace('password=','password=***'2026-04-09 16:21:12 [http-nio-8080-exec-1] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'.replace('password=','password=***'2026-04-09 16:21:12 [http-nio-8080-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'.replace('password=','password=***'2026-04-09 16:21:12 [http-nio-8080-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Completed initialization in 0 ms.replace('password=','password=***'

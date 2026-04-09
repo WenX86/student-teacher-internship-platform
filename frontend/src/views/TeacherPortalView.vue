@@ -2,12 +2,15 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage } from "element-plus/es/components/message/index";
+import { ElMessageBox } from "element-plus";
 import { downloadFile, get, post } from "../api/http";
 import FilterTablePanel from "../components/FilterTablePanel.vue";
 import { useFilteredPagination } from "../composables/useFilteredPagination";
+import { useMessageStore } from "../stores/message";
 import { getMessageTypeMeta, getReadStatusMeta, getStatusMeta } from "../utils/status";
 
 const route = useRoute();
+const messageStore = useMessageStore();
 const loading = ref(false);
 const dashboard = ref({});
 const mentorApplications = ref([]);
@@ -40,7 +43,7 @@ const evaluationForm = reactive({
   dimensionScores: [],
 });
 
-const pageSize = 5;
+const pageSize = 10;
 const messagePageSize = 10;
 
 const section = computed(() => route.meta.section || "dashboard");
@@ -145,6 +148,7 @@ async function loadAll() {
       get("/risk-alerts"),
     ]);
     dashboard.value = dashboardData;
+    messageStore.syncUnreadCount(dashboardData?.unreadMessages || 0);
     mentorApplications.value = mentorData;
     forms.value = formData;
     guidanceRecords.value = guidanceData;
@@ -351,6 +355,28 @@ async function markRead(row) {
     await loadAll();
   } catch (error) {
     ElMessage.error(error.message);
+  }
+}
+
+async function markAllRead() {
+  if (!unreadTeacherMessages.value.length) {
+    ElMessage.info("当前没有未读消息。");
+    return;
+  }
+
+  try {
+    await ElMessageBox.confirm(`确认将 ${unreadTeacherMessages.value.length} 条未读消息全部标记为已读？`, "全部已读", {
+      confirmButtonText: "全部已读",
+      cancelButtonText: "取消",
+      type: "warning",
+    });
+    const result = await post("/messages/read-all", {});
+    ElMessage.success(`已将 ${result?.updatedCount || unreadTeacherMessages.value.length} 条消息标记为已读`);
+    await loadAll();
+  } catch (error) {
+    if (error !== "cancel") {
+      ElMessage.error(error.message);
+    }
   }
 }
 
@@ -569,7 +595,10 @@ watch(messageReadFilter, () => {
           <h2>消息中心</h2>
           <div class="subtle">聚合审核待办、学生提醒和系统结果反馈。</div>
         </div>
-        <el-tag type="warning">未读 {{ unreadTeacherMessages.length }} 条</el-tag>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <el-tag type="warning">未读 {{ unreadTeacherMessages.length }} 条</el-tag>
+          <el-button link type="primary" :disabled="!unreadTeacherMessages.length" @click="markAllRead">全部已读</el-button>
+        </div>
       </div>
       <FilterTablePanel
         v-model:keyword="messageKeyword"
@@ -650,7 +679,18 @@ watch(messageReadFilter, () => {
           </el-select>
         </el-form-item>
         <el-row :gutter="14">
-          <el-col :span="12"><el-form-item label="指导时间"><el-input v-model="guidanceForm.guidanceAt" placeholder="YYYY-MM-DD HH:mm" /></el-form-item></el-col>
+          <el-col :span="12">
+            <el-form-item label="指导时间">
+              <el-date-picker
+                v-model="guidanceForm.guidanceAt"
+                type="datetime"
+                value-format="YYYY-MM-DD HH:mm:ss"
+                format="YYYY-MM-DD HH:mm"
+                placeholder="请选择指导时间"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
           <el-col :span="12">
             <el-form-item label="指导方式">
               <el-select v-model="guidanceForm.mode" style="width: 100%">

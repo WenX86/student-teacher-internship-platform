@@ -1,12 +1,14 @@
-﻿<script setup>
+<script setup>
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus/es/components/message/index";
 import { useAuthStore } from "../stores/auth";
+import { useMessageStore } from "../stores/message";
 
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const messageStore = useMessageStore();
 const changePasswordDialogVisible = ref(false);
 const savingPassword = ref(false);
 const passwordForm = reactive({
@@ -63,6 +65,11 @@ const roleLabelMap = {
 
 const currentMenus = computed(() => menus[authStore.user?.role] || []);
 const roleLabel = computed(() => roleLabelMap[authStore.user?.role] || "平台用户");
+const messageBadgeValue = computed(() => (messageStore.unreadCount > 99 ? "99+" : messageStore.unreadCount));
+
+function isMessageMenuItem(item) {
+  return typeof item?.path === "string" && item.path.endsWith("/messages");
+}
 
 function resetPasswordForm() {
   passwordForm.newPassword = "";
@@ -76,6 +83,7 @@ function openChangePasswordDialog() {
 
 function handleLogout() {
   authStore.logout();
+  messageStore.reset();
   router.push("/login");
 }
 
@@ -96,10 +104,24 @@ async function syncCurrentUser() {
     await authStore.refreshUser();
   } catch (error) {
     authStore.logout();
+    messageStore.reset();
     router.push("/login");
     ElMessage.error(error.message);
   }
 }
+
+watch(
+  () => authStore.token,
+  async (token) => {
+    if (!token) {
+      messageStore.reset();
+      return;
+    }
+
+    await messageStore.refreshUnreadCount();
+  },
+  { immediate: true },
+);
 
 async function submitPasswordChange() {
   const nextPassword = passwordForm.newPassword.trim();
@@ -170,7 +192,14 @@ onMounted(syncCurrentUser);
         style="border-right: none"
         router
       >
-        <el-menu-item v-for="item in currentMenus" :key="item.path" :index="item.path">{{ item.label }}</el-menu-item>
+        <el-menu-item v-for="item in currentMenus" :key="item.path" :index="item.path">
+          <span class="menu-item-row">
+            <span class="menu-item-label">{{ item.label }}</span>
+            <span v-if="isMessageMenuItem(item) && messageStore.unreadCount > 0" class="menu-item-badge">
+              {{ messageBadgeValue }}
+            </span>
+          </span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -183,6 +212,9 @@ onMounted(syncCurrentUser);
         </div>
         <div style="display:flex;align-items:center;gap:12px">
           <el-tag v-if="authStore.user?.mustChangePassword" type="danger">首次登录待改密</el-tag>
+          <el-badge v-if="messageStore.unreadCount > 0" :value="messageBadgeValue" :max="99" type="danger">
+            <el-tag type="warning">消息提醒</el-tag>
+          </el-badge>
           <el-tag type="success">一期主链已打通</el-tag>
           <el-button plain @click="openChangePasswordDialog">修改密码</el-button>
           <el-button plain @click="handleLogout">退出登录</el-button>
@@ -220,4 +252,3 @@ onMounted(syncCurrentUser);
     </template>
   </el-dialog>
 </template>
-

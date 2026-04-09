@@ -42,7 +42,7 @@ const collegeAdminForm = reactive({
 });
 const settingsForm = reactive({});
 
-const pageSize = 6;
+const pageSize = 10;
 const applicationStatus = ref("ALL");
 const applicationStatusOptions = [
   { label: "全部状态", value: "ALL" },

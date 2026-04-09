@@ -6,7 +6,9 @@ public enum FormStatus {
     TEACHER_RETURNED("教师退回"),
     COLLEGE_REVIEWING("学院审核中"),
     COLLEGE_RETURNED("学院退回"),
-    ARCHIVED("已归档");
+    ARCHIVED("已归档"),
+    MODIFICATION_REQUESTING("修改申请中"),
+    MODIFICATION_ALLOWED("允许修改");
 
     private final String label;
 

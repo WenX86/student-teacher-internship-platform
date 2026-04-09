@@ -121,6 +121,19 @@ public final class Requests {
     ) {
     }
 
+    public record FormModificationRequest(
+            @NotBlank(message = "修改原因不能为空")
+            String reason
+    ) {
+    }
+
+    public record FormModificationReviewRequest(
+            @NotNull(message = "审核结论不能为空")
+            Boolean approved,
+            String comment
+    ) {
+    }
+
     public record FormReviewRequest(
             @NotNull(message = "审核结论不能为空")
             Boolean approved,

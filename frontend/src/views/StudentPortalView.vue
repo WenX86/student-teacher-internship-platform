@@ -2,12 +2,15 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage } from "element-plus/es/components/message/index";
+import { ElMessageBox } from "element-plus";
 import { downloadFile, get, post, put, uploadFile } from "../api/http";
 import FilterTablePanel from "../components/FilterTablePanel.vue";
 import { useFilteredPagination } from "../composables/useFilteredPagination";
+import { useMessageStore } from "../stores/message";
 import { getMessageTypeMeta, getReadStatusMeta, getStatusMeta } from "../utils/status";
 
 const route = useRoute();
+const messageStore = useMessageStore();
 const loading = ref(false);
 const dashboard = ref({});
 const mentorApplications = ref([]);
@@ -27,6 +30,10 @@ const mentorDialogVisible = ref(false);
 const internshipDialogVisible = ref(false);
 const formDialogVisible = ref(false);
 const editingFormId = ref("");
+const editingArchivedForm = ref(false);
+const modificationRequestDialogVisible = ref(false);
+const modificationRequestForm = reactive({ reason: "" });
+const modificationRequestRow = ref(null);
 
 const mentorForm = reactive({
   teacherId: "",
@@ -51,7 +58,7 @@ const formModel = reactive({
   attachments: [],
 });
 
-const pageSize = 5;
+const pageSize = 10;
 
 const section = computed(() => route.meta.section || "dashboard");
 const latestForms = computed(() => forms.value.slice(0, 5));
@@ -87,7 +94,7 @@ const formCreationHint = computed(() => {
   }
   return "";
 });
-const editableFormStatuses = ["草稿", "教师退回", "学院退回"];
+const editableFormStatuses = ["草稿", "教师退回", "学院退回", "允许修改"];
 const templateFields = computed(() => {
   if (selectedTemplate.value?.fieldSchema?.length) {
     return selectedTemplate.value.fieldSchema;
@@ -154,6 +161,7 @@ async function loadAll() {
     ]);
 
     dashboard.value = dashboardData;
+    messageStore.syncUnreadCount(dashboardData?.unreadMessages || 0);
     mentorApplications.value = mentorData;
     teachers.value = teacherData;
     organizations.value = organizationData;
@@ -191,6 +199,7 @@ function resetInternshipForm() {
 
 function resetFormModel() {
   editingFormId.value = "";
+  editingArchivedForm.value = false;
   formModel.templateCode = "";
   syncFormContent([]);
   formModel.submit = true;
@@ -224,6 +233,12 @@ function openFormDialog() {
   }
   resetFormModel();
   formDialogVisible.value = true;
+}
+
+function openModificationRequestDialog(row) {
+  modificationRequestRow.value = row;
+  modificationRequestForm.reason = "";
+  modificationRequestDialogVisible.value = true;
 }
 
 function formatFileSize(size) {
@@ -361,6 +376,7 @@ async function submitInternshipApplication() {
 
 function editExistingForm(row) {
   editingFormId.value = row.id;
+  editingArchivedForm.value = row.status === "允许修改";
   formModel.templateCode = row.templateCode;
   const template = templates.value.find((item) => item.code === row.templateCode);
   syncFormContent(template?.fieldSchema || createDefaultFields(), row.content || {});
@@ -373,12 +389,16 @@ function canEditForm(row) {
   return editableFormStatuses.includes(row?.status);
 }
 
+function canRequestModification(row) {
+  return row?.status === "已归档";
+}
+
 async function submitForm() {
   if (!formModel.templateCode) {
     ElMessage.warning("请先选择表单模板");
     return;
   }
-  if (!canCreateForm.value) {
+  if (!editingFormId.value && !canCreateForm.value) {
     ElMessage.warning(formCreationHint.value || "请先完成前置条件");
     return;
   }
@@ -415,12 +435,58 @@ async function submitForm() {
   }
 }
 
+async function submitFormModificationRequest() {
+  if (!modificationRequestRow.value) {
+    ElMessage.warning("请先选择要修改的表单");
+    return;
+  }
+  if (!modificationRequestForm.reason.trim()) {
+    ElMessage.warning("请填写修改原因");
+    return;
+  }
+
+  try {
+    await post(`/forms/${modificationRequestRow.value.id}/modification-request`, {
+      reason: modificationRequestForm.reason,
+    });
+    ElMessage.success("修改申请已提交，请等待学院审批");
+    modificationRequestDialogVisible.value = false;
+    modificationRequestRow.value = null;
+    modificationRequestForm.reason = "";
+    await loadAll();
+  } catch (error) {
+    ElMessage.error(error.message);
+  }
+}
+
 async function markRead(row) {
   try {
     await post(`/messages/${row.id}/read`, {});
     await loadAll();
   } catch (error) {
     ElMessage.error(error.message);
+  }
+}
+
+async function markAllRead() {
+  if (!unreadMessages.value.length) {
+    ElMessage.info("当前没有未读消息。");
+    return;
+  }
+
+  try {
+    await ElMessageBox.confirm(`确认将 ${unreadMessages.value.length} 条未读消息全部标记为已读？`, "全部已读", {
+      confirmButtonText: "全部已读",
+      cancelButtonText: "取消",
+      type: "warning",
+    });
+    const result = await post("/messages/read-all", {});
+    ElMessage.success(`已将 ${result?.updatedCount || unreadMessages.value.length} 条消息标记为已读`);
+    await loadAll();
+  } catch (error) {
+    if (error !== "cancel") {
+      ElMessage.error(error.message);
+    }
   }
 }
 
@@ -472,7 +538,10 @@ watch(messageReadFilter, () => {
       <div class="panel-card">
         <div class="page-header">
           <h2 style="font-size: 20px">未读消息</h2>
-          <el-tag type="warning">{{ unreadMessages.length }} 条</el-tag>
+          <div style="display: flex; align-items: center; gap: 10px">
+            <el-tag type="warning">{{ unreadMessages.length }} 条</el-tag>
+            <el-button link type="primary" :disabled="!unreadMessages.length" @click="markAllRead">全部已读</el-button>
+          </div>
         </div>
         <el-table :data="unreadMessages" style="margin-top: 16px">
           <el-table-column label="消息类型" width="120">
@@ -622,7 +691,9 @@ watch(messageReadFilter, () => {
           </el-table-column>
           <el-table-column label="操作" width="120">
             <template #default="{ row }">
-              <el-button v-if="canEditForm(row)" link type="primary" @click="editExistingForm(row)">编辑</el-button>
+              <el-button v-if="canEditForm(row)" link type="primary" @click="editExistingForm(row)">{{ row.status === "允许修改" ? "修改" : "编辑" }}</el-button>
+              <el-button v-else-if="canRequestModification(row)" link type="warning" @click="openModificationRequestDialog(row)">申请修改</el-button>
+              <span v-else-if="row.status === '修改申请中'" class="subtle">申请中</span>
               <span v-else class="subtle">当前状态不可编辑</span>
             </template>
           </el-table-column>
@@ -638,6 +709,10 @@ watch(messageReadFilter, () => {
         <div>
           <h2>消息中心</h2>
           <div class="subtle">集中查看待办提醒、审核结果和退回通知。</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <el-tag type="warning">未读 {{ unreadMessages.length }} 条</el-tag>
+          <el-button link type="primary" :disabled="!unreadMessages.length" @click="markAllRead">全部已读</el-button>
         </div>
       </div>
       <FilterTablePanel
@@ -811,7 +886,7 @@ watch(messageReadFilter, () => {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="formDialogVisible" :title="editingFormId ? '编辑表单' : '新建表单'" width="720px">
+    <el-dialog v-model="formDialogVisible" :title="editingFormId ? (editingArchivedForm ? '修改表单' : '编辑表单') : '新建表单'" width="720px">
       <el-form label-position="top">
         <el-form-item label="表单模板">
           <el-select v-model="formModel.templateCode" placeholder="请选择表单模板" style="width: 100%" @change="handleTemplateChange">
@@ -819,6 +894,7 @@ watch(messageReadFilter, () => {
           </el-select>
         </el-form-item>
         <div v-if="selectedTemplate?.description" class="subtle" style="margin: -6px 0 14px">{{ selectedTemplate.description }}</div>
+        <div v-if="editingArchivedForm" class="subtle" style="margin: -6px 0 14px">修改申请已通过，保存后可重新提交进入教师审核流程，原归档版本会保留在历史记录中。</div>
         <template v-for="field in templateFields" :key="field.key">
           <el-form-item :label="field.label">
             <el-input
@@ -870,6 +946,18 @@ watch(messageReadFilter, () => {
       <template #footer>
         <el-button @click="formDialogVisible = false">取消</el-button>
         <el-button type="primary" color="#0f766e" @click="submitForm">{{ editingFormId ? "保存修改" : "提交表单" }}</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="modificationRequestDialogVisible" title="申请修改" width="560px">
+      <el-form label-position="top">
+        <el-form-item label="修改原因">
+          <el-input v-model="modificationRequestForm.reason" type="textarea" :rows="5" placeholder="请说明需要修改的原因、修改点和补充内容" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="modificationRequestDialogVisible = false">取消</el-button>
+        <el-button type="primary" color="#0f766e" @click="submitFormModificationRequest">提交申请</el-button>
       </template>
     </el-dialog>
   </div>

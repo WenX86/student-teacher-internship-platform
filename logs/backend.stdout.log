@@ -3,5 +3,5 @@ Using ASCII junction : C:\Users\32468\AppData\Local\Temp\internship-platform-bac
 Running command      : mvn spring-boot:run -DskipTests
 
 Backend: http://localhost:8080
-Backend PID: 27980
+Backend PID: 31480
 Logs: D:\CFile\师范生实习记录平台\backend-spring\logs

@@ -136,6 +136,10 @@ CREATE TABLE form_instance (
     submitted_at DATETIME,
     teacher_reviewed_at DATETIME,
     college_reviewed_at DATETIME,
+    modification_reason VARCHAR(255),
+    modification_review_comment VARCHAR(255),
+    modification_requested_at DATETIME,
+    modification_reviewed_at DATETIME,
     history_json LONGTEXT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -35,15 +35,13 @@ const guidanceForm = reactive({
 });
 const evaluationForm = reactive({
   studentId: "",
-  stageComment: "",
   summaryComment: "",
   finalScore: 90,
   dimensionScores: [],
-  strengthsComment: "",
-  improvementComment: "",
 });
 
 const pageSize = 5;
+const messagePageSize = 10;
 
 const section = computed(() => route.meta.section || "dashboard");
 const activeStudents = computed(() => mentorApplications.value.filter((item) => item.status === "已生效").map((item) => item.student));
@@ -112,6 +110,18 @@ const {
 
 function attachmentList(row) {
   return Array.isArray(row?.attachments) ? row.attachments : [];
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  const pad = (num) => String(num).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 async function handleDownloadAttachment(item) {
@@ -213,14 +223,77 @@ async function submitGuidanceRecord() {
     ElMessage.error(error.message);
   }
 }
-function createDefaultEvaluationDimensions() {
+function createDefaultEvaluationDimensions(studentId = "") {
+  return buildEvaluationDimensions(studentId);
+}
+
+function getProcessScore(studentId) {
+  const scores = forms.value
+    .filter((item) => item.studentId === studentId && typeof item.score === "number")
+    .map((item) => Number(item.score))
+    .filter((item) => Number.isFinite(item));
+  if (!scores.length) {
+    return 0;
+  }
+  return Math.round(scores.reduce((total, score) => total + score, 0) / scores.length);
+}
+
+function normalizeEvaluationDimension(item, studentId) {
+  const key = item?.key === "management" ? "process" : item?.key || "";
+  const labelMap = {
+    ethics: "师德表现",
+    teaching: "教学能力",
+    process: "过程评分",
+    reflection: "教学反思",
+  };
+  const score = key === "process" ? getProcessScore(studentId) : Number(item?.score ?? 0);
+  return {
+    key,
+    label: item?.label || labelMap[key] || key,
+    score: Number.isFinite(score) ? score : 0,
+    comment: item?.comment || "",
+  };
+}
+
+function buildEvaluationDimensions(studentId, sourceDimensions = []) {
+  const normalizedSource = sourceDimensions.map((item) => normalizeEvaluationDimension(item, studentId));
+  const dimensionMap = new Map(normalizedSource.map((item) => [item.key, item]));
   return [
-    { key: "ethics", label: "师德表现", score: 90, comment: "" },
-    { key: "teaching", label: "教学能力", score: 90, comment: "" },
-    { key: "management", label: "班级管理", score: 90, comment: "" },
-    { key: "reflection", label: "教学反思", score: 90, comment: "" },
+    dimensionMap.get("ethics") || { key: "ethics", label: "师德表现", score: 90, comment: "" },
+    dimensionMap.get("teaching") || { key: "teaching", label: "教学能力", score: 90, comment: "" },
+    { key: "process", label: "过程评分", score: getProcessScore(studentId), comment: dimensionMap.get("process")?.comment || "" },
+    dimensionMap.get("reflection") || { key: "reflection", label: "教学反思", score: 90, comment: "" },
   ];
 }
+
+function calculateEvaluationFinalScore(dimensions) {
+  const scoreMap = new Map((dimensions || []).map((item) => [item.key, Number(item.score) || 0]));
+  return Math.round(
+    (scoreMap.get("ethics") || 0) * 0.2
+      + (scoreMap.get("teaching") || 0) * 0.2
+      + (scoreMap.get("process") || 0) * 0.4
+      + (scoreMap.get("reflection") || 0) * 0.2,
+  );
+}
+
+watch(
+  () => evaluationForm.studentId,
+  (studentId) => {
+    if (!evaluationDialog.value || !studentId) {
+      return;
+    }
+    evaluationForm.dimensionScores = buildEvaluationDimensions(studentId, evaluationForm.dimensionScores);
+    evaluationForm.finalScore = calculateEvaluationFinalScore(evaluationForm.dimensionScores);
+  },
+);
+
+watch(
+  () => evaluationForm.dimensionScores,
+  () => {
+    evaluationForm.finalScore = calculateEvaluationFinalScore(evaluationForm.dimensionScores);
+  },
+  { deep: true },
+);
 
 function canEditEvaluation(row) {
   return !row?.confirmedByCollege;
@@ -231,12 +304,9 @@ function openEvaluationDialog(row) {
     return;
   }
   evaluationForm.studentId = row?.student?.id || row?.id || "";
-  evaluationForm.stageComment = row?.stageComment || "";
   evaluationForm.summaryComment = row?.summaryComment || "";
-  evaluationForm.finalScore = row?.recommendedScore || row?.finalScore || 90;
-  evaluationForm.dimensionScores = (row?.dimensionScores?.length ? row.dimensionScores : createDefaultEvaluationDimensions()).map((item) => ({ ...item }));
-  evaluationForm.strengthsComment = row?.strengthsComment || "";
-  evaluationForm.improvementComment = row?.improvementComment || "";
+  evaluationForm.dimensionScores = buildEvaluationDimensions(evaluationForm.studentId, row?.dimensionScores?.length ? row.dimensionScores : []);
+  evaluationForm.finalScore = calculateEvaluationFinalScore(evaluationForm.dimensionScores);
   evaluationDialog.value = true;
 }
 
@@ -333,8 +403,12 @@ watch(messageReadFilter, () => {
           <el-table-column label="学生" min-width="160">
             <template #default="{ row }">{{ row.student?.name }} / {{ row.student?.studentNo }}</template>
           </el-table-column>
-          <el-table-column prop="studentRemark" label="学生备注" min-width="220" />
-          <el-table-column prop="createdAt" label="申请时间" width="180" />
+          <el-table-column label="学生备注" min-width="220">
+            <template #default="{ row }"><span :class="row.studentRemark ? '' : 'subtle'">{{ row.studentRemark || "未填写备注" }}</span></template>
+          </el-table-column>
+          <el-table-column label="申请时间" width="180">
+            <template #default="{ row }"><span class="table-datetime">{{ formatDateTime(row.createdAt) }}</span></template>
+          </el-table-column>
           <el-table-column label="操作" width="140">
             <template #default="{ row }"><el-button link type="primary" @click="openMentorReview(row)">处理申请</el-button></template>
           </el-table-column>
@@ -347,7 +421,7 @@ watch(messageReadFilter, () => {
       <div class="page-header">
         <div>
           <h2>材料审核</h2>
-          <div class="subtle">学生表单统一进入教师审核流程，审核通过后再流转到学院归档。</div>
+          <div class="subtle">学生表单统一进入教师审核流程，审核通过后直接归档。</div>
         </div>
       </div>
       <FilterTablePanel
@@ -423,7 +497,7 @@ watch(messageReadFilter, () => {
       <div class="page-header">
         <div>
           <h2>评价管理</h2>
-          <div class="subtle">填写多维评价、优点亮点和改进建议，并提交学院确认最终成绩。</div>
+          <div class="subtle">填写多维评价和总结评价，并提交学院确认最终成绩。</div>
         </div>
         <el-button type="primary" color="#0f766e" :disabled="!activeStudents.length" @click="openEvaluationDialog(activeStudents[0])">新建评价</el-button>
       </div>
@@ -437,8 +511,8 @@ watch(messageReadFilter, () => {
               </el-space>
             </template>
           </el-table-column>
-          <el-table-column prop="strengthsComment" label="优势亮点" min-width="180" />
-          <el-table-column prop="improvementComment" label="改进建议" min-width="180" />
+          <el-table-column prop="summaryComment" label="总结评价" min-width="240" />
+          <el-table-column prop="finalScore" label="总评分" width="100" />
           <el-table-column label="学院确认状态" width="100">
             <template #default="{ row }">
               <el-tag :type="getStatusMeta(row.confirmedByCollege ? '已确认' : '待确认').type">{{ getStatusMeta(row.confirmedByCollege ? '已确认' : '待确认').label }}</el-tag>
@@ -502,7 +576,7 @@ watch(messageReadFilter, () => {
         v-model:current-page="messagePage"
         placeholder="筛选类型、标题或内容"
         :total="filteredMessages.length"
-        :page-size="pageSize"
+        :page-size="messagePageSize"
       >
         <template #toolbar-extra>
           <el-select v-model="messageReadFilter" style="width: 140px">
@@ -596,25 +670,29 @@ watch(messageReadFilter, () => {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="evaluationDialog" title="新建评价" width="640px">
+    <el-dialog v-model="evaluationDialog" title="新建评价" width="720px">
       <el-form label-position="top">
         <el-form-item label="学生">
           <el-select v-model="evaluationForm.studentId" placeholder="请选择学生" style="width: 100%">
             <el-option v-for="item in activeStudents" :key="item.id" :label="`${item.name} / ${item.studentNo}`" :value="item.id" />
           </el-select>
         </el-form-item>
-        <div v-for="item in evaluationForm.dimensionScores" :key="item.key" class="panel-card" style="margin-bottom: 12px">
-          <div class="page-header">
-            <h2 style="font-size: 16px">{{ item.label }}</h2>
-            <el-input-number v-model="item.score" :min="0" :max="100" />
+        <div v-for="item in evaluationForm.dimensionScores" :key="item.key" class="evaluation-card">
+          <div class="evaluation-card-head">
+            <div class="evaluation-card-label">{{ item.label }}</div>
+            <div class="evaluation-score-wrap">
+              <el-input-number v-model="item.score" :min="0" :max="100" :disabled="item.key === 'process'" class="evaluation-score" />
+              <div v-if="item.key === 'process'" class="evaluation-note">过程评分由学生表单得分平均值自动生成</div>
+            </div>
           </div>
-          <el-input v-model="item.comment" type="textarea" :rows="2" :placeholder="`请填写${item.label}评价意见`" />
         </div>
-        <el-form-item label="阶段评价"><el-input v-model="evaluationForm.stageComment" type="textarea" :rows="3" /></el-form-item>
-        <el-form-item label="总结评价"><el-input v-model="evaluationForm.summaryComment" type="textarea" :rows="4" /></el-form-item>
-        <el-form-item label="优势亮点"><el-input v-model="evaluationForm.strengthsComment" type="textarea" :rows="3" /></el-form-item>
-        <el-form-item label="改进建议"><el-input v-model="evaluationForm.improvementComment" type="textarea" :rows="3" /></el-form-item>
-        <el-form-item label="最终成绩"><el-input-number v-model="evaluationForm.finalScore" :min="0" :max="100" style="width: 100%" /></el-form-item>
+        <el-form-item label="总结评价" class="evaluation-summary-item">
+          <el-input v-model="evaluationForm.summaryComment" type="textarea" :rows="5" placeholder="请填写对该学生本次实习的总体评价" />
+        </el-form-item>
+        <el-form-item label="总评分">
+          <el-input-number v-model="evaluationForm.finalScore" :min="0" :max="100" style="width: 100%" disabled />
+        </el-form-item>
+        <div class="evaluation-form-note">总评分 = 师德表现 20% + 教学能力 20% + 过程评分 40% + 教学反思 20%</div>
       </el-form>
       <template #footer>
         <el-button @click="evaluationDialog = false">取消</el-button>
@@ -623,3 +701,74 @@ watch(messageReadFilter, () => {
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.evaluation-card {
+  margin-bottom: 12px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.98));
+  border: 1px solid rgba(15, 118, 110, 0.08);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.evaluation-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.evaluation-card-label {
+  min-width: 0;
+  flex: 1;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #334155;
+}
+
+.evaluation-score-wrap {
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.evaluation-score {
+  width: 100%;
+}
+
+.evaluation-note {
+  max-width: 240px;
+  text-align: right;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.evaluation-summary-item :deep(.el-form-item__label),
+.evaluation-form-note {
+  font-size: 14px;
+  color: #64748b;
+}
+
+.evaluation-summary-item {
+  margin-top: 6px;
+}
+
+.table-datetime {
+  display: inline-block;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.evaluation-form-note {
+  margin-top: -8px;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+</style>
+
+

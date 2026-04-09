@@ -1,0 +1,19 @@
+[2m20:57:07[22m [31m[1m[vite][22m[39m [31mInternal server error: Element is missing end tag.[39m
+  Plugin: [35mvite:vue[39m
+  File: [36mD:/CFile/师范生实习记录平台/frontend/src/views/AdminPortalView.vue[39m:529:3
+[33m  527|  
+  528|  <template>
+  529|    <div class="page-shell" v-loading="loading">
+     |     ^
+  530|      <template v-if="section === 'dashboard'">
+  531|        <div class="page-header">[39m
+      at createCompilerError (D:\CFile\师范生实习记录平台\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1378:17)
+      at emitError (D:\CFile\师范生实习记录平台\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3014:5)
+      at Object.onclosetag (D:\CFile\师范生实习记录平台\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:2381:13)
+      at Tokenizer.stateInClosingTagName (D:\CFile\师范生实习记录平台\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:799:16)
+      at Tokenizer.parse (D:\CFile\师范生实习记录平台\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1157:16)
+      at Object.baseParse (D:\CFile\师范生实习记录平台\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3053:13)
+      at Object.parse (D:\CFile\师范生实习记录平台\frontend\node_modules\@vue\compiler-dom\dist\compiler-dom.cjs.js:910:23)
+      at Object.parse$1 [as parse] (D:\CFile\师范生实习记录平台\frontend\node_modules\@vue\compiler-sfc\dist\compiler-sfc.cjs.js:1824:24)
+      at createDescriptor (file:///D:/CFile/%E5%B8%88%E8%8C%83%E7%94%9F%E5%AE%9E%E4%B9%A0%E8%AE%B0%E5%BD%95%E5%B9%B3%E5%8F%B0/frontend/node_modules/@vitejs/plugin-vue/dist/index.mjs:71:43)
+      at handleHotUpdate (file:///D:/CFile/%E5%B8%88%E8%8C%83%E7%94%9F%E5%AE%9E%E4%B9%A0%E8%AE%B0%E5%BD%95%E5%B9%B3%E5%8F%B0/frontend/node_modules/@vitejs/plugin-vue/dist/index.mjs:2198:26)

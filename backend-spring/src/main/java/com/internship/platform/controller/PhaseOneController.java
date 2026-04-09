@@ -253,6 +253,22 @@ public class PhaseOneController {
         return ApiResponse.ok();
     }
 
+    @PostMapping("/evaluations/{id}/college-return")
+    public ApiResponse<Void> collegeReturnEvaluation(@PathVariable String id, @Valid @RequestBody Requests.EvaluationCollegeReturnRequest request) {
+        phaseOneService.collegeReturnEvaluation(phaseOneService.currentLoginUser(), id, request);
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/evaluations/batch-college-confirm")
+    public ApiResponse<Map<String, Object>> batchCollegeConfirmEvaluations(@Valid @RequestBody Requests.BatchEvaluationCollegeConfirmRequest request) {
+        return ApiResponse.ok(phaseOneService.batchCollegeConfirmEvaluations(phaseOneService.currentLoginUser(), request));
+    }
+
+    @PostMapping("/evaluations/batch-college-return")
+    public ApiResponse<Map<String, Object>> batchCollegeReturnEvaluations(@Valid @RequestBody Requests.BatchEvaluationCollegeReturnRequest request) {
+        return ApiResponse.ok(phaseOneService.batchCollegeReturnEvaluations(phaseOneService.currentLoginUser(), request));
+    }
+
     @GetMapping("/reports/summary")
     public ApiResponse<Map<String, Object>> reportSummary() {
         return ApiResponse.ok(phaseOneService.reportSummary(phaseOneService.currentLoginUser()));
@@ -278,9 +294,19 @@ public class PhaseOneController {
         return ApiResponse.ok(phaseOneService.basicData(phaseOneService.currentLoginUser()));
     }
 
+    @PostMapping("/admin/colleges")
+    public ApiResponse<Map<String, Object>> createCollege(@Valid @RequestBody Requests.CollegeCreateRequest request) {
+        return ApiResponse.ok(phaseOneService.createCollege(phaseOneService.currentLoginUser(), request));
+    }
+
     @GetMapping("/admin/college-admins")
     public ApiResponse<List<Map<String, Object>>> collegeAdmins() {
         return ApiResponse.ok(phaseOneService.collegeAdmins(phaseOneService.currentLoginUser()));
+    }
+
+    @PostMapping("/admin/college-admins")
+    public ApiResponse<Map<String, Object>> createCollegeAdmin(@Valid @RequestBody Requests.CollegeAdminCreateRequest request) {
+        return ApiResponse.ok(phaseOneService.createCollegeAdmin(phaseOneService.currentLoginUser(), request));
     }
 
     @PostMapping("/admin/college-admins/{id}/reset-password")

@@ -175,7 +175,9 @@ CREATE TABLE evaluation_record (
     college_score INT,
     submitted_to_college BOOLEAN,
     confirmed_by_college BOOLEAN,
+    returned_by_college BOOLEAN,
     evaluated_at TIMESTAMP,
+    college_returned_at TIMESTAMP,
     college_confirmed_at TIMESTAMP
 );
 

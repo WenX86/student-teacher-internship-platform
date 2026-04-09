@@ -175,7 +175,9 @@ CREATE TABLE evaluation_record (
     college_score INT,
     submitted_to_college TINYINT(1),
     confirmed_by_college TINYINT(1),
+    returned_by_college TINYINT(1),
     evaluated_at DATETIME,
+    college_returned_at DATETIME,
     college_confirmed_at DATETIME
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -27,6 +27,9 @@ public class EvaluationRecordEntity {
     private Boolean submittedToCollege;
     @TableField("confirmed_by_college")
     private Boolean confirmedByCollege;
+    @TableField("returned_by_college")
+    private Boolean returnedByCollege;
     private LocalDateTime evaluatedAt;
+    private LocalDateTime collegeReturnedAt;
     private LocalDateTime collegeConfirmedAt;
 }

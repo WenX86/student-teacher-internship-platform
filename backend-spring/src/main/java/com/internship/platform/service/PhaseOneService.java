@@ -744,11 +744,23 @@ public class PhaseOneService {
         entity.setScore(request.score());
         entity.setTeacherReviewedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
-        entity.setStatus(Boolean.TRUE.equals(request.approved()) ? FormStatus.COLLEGE_REVIEWING.getLabel() : FormStatus.TEACHER_RETURNED.getLabel());
+        if (Boolean.TRUE.equals(request.approved())) {
+            entity.setStatus(FormStatus.ARCHIVED.getLabel());
+            entity.setCollegeReviewedAt(LocalDateTime.now());
+        } else {
+            entity.setStatus(FormStatus.TEACHER_RETURNED.getLabel());
+            entity.setCollegeReviewedAt(null);
+        }
         formInstanceMapper.updateById(entity);
 
         StudentEntity student = requireStudent(entity.getStudentId());
-        createMessage(requireUser(student.getUserId()).getId(), Boolean.TRUE.equals(request.approved()) ? "审核结果" : "退回通知", entity.getTemplateName() + (Boolean.TRUE.equals(request.approved()) ? "已通过教师审核" : "被教师退回"), Optional.ofNullable(request.comment()).orElse("请查看教师审核结果。"), "/student/tasks");
+        createMessage(
+                requireUser(student.getUserId()).getId(),
+                Boolean.TRUE.equals(request.approved()) ? "审核结果" : "退回通知",
+                entity.getTemplateName() + (Boolean.TRUE.equals(request.approved()) ? "已通过教师审核" : "被教师退回"),
+                Optional.ofNullable(request.comment()).orElse("请查看教师审核结果。"),
+                "/student/tasks"
+        );
         if (Boolean.TRUE.equals(request.approved())) {
             UserAccountEntity collegeAdmin = userAccountMapper.selectOne(
                     Wrappers.<UserAccountEntity>lambdaQuery()
@@ -757,7 +769,13 @@ public class PhaseOneService {
                             .last("limit 1")
             );
             if (collegeAdmin != null) {
-                createMessage(collegeAdmin.getId(), "待办提醒", student.getName() + " 的 " + entity.getTemplateName() + " 待学院归档", "教师已审核通过，请进行学院终审。", "/college/archive");
+                createMessage(
+                        collegeAdmin.getId(),
+                        "归档通知",
+                        student.getName() + " 的 " + entity.getTemplateName() + " 已归档",
+                        "教师审核已完成，表单已直接归档，请查看。",
+                        "/college/archive"
+                );
             }
         }
     }
@@ -912,8 +930,11 @@ public class PhaseOneService {
             payload.put("collegeComment", item.getCollegeComment());
             payload.put("submittedToCollege", item.getSubmittedToCollege());
             payload.put("confirmedByCollege", item.getConfirmedByCollege());
+            payload.put("returnedByCollege", item.getReturnedByCollege());
             payload.put("evaluatedAt", item.getEvaluatedAt());
+            payload.put("collegeReturnedAt", item.getCollegeReturnedAt());
             payload.put("collegeConfirmedAt", item.getCollegeConfirmedAt());
+            payload.put("reviewStatus", resolveEvaluationReviewStatus(item));
             payload.put("teacher", toTeacherSimple(requireTeacher(item.getTeacherId())));
             payload.put("student", toStudentSimple(requireStudent(item.getStudentId())));
             return payload;
@@ -959,12 +980,14 @@ public class PhaseOneService {
             throw new BizException("无权确认该评价");
         }
         ensureEvaluationConfirmable(entity);
-        if (request.collegeScore() < 0 || request.collegeScore() > 100) {
-            throw new BizException("学院最终成绩需在 0 到 100 之间");
+        if (entity.getFinalScore() == null) {
+            throw new BizException("教师评价成绩不能为空");
         }
-        entity.setCollegeScore(request.collegeScore());
+        entity.setCollegeScore(entity.getFinalScore());
         entity.setCollegeComment(Optional.ofNullable(request.collegeComment()).orElse(""));
         entity.setConfirmedByCollege(true);
+        entity.setReturnedByCollege(false);
+        entity.setCollegeReturnedAt(null);
         entity.setCollegeConfirmedAt(LocalDateTime.now());
         evaluationRecordMapper.updateById(entity);
 
@@ -976,6 +999,153 @@ public class PhaseOneService {
                 "/student/results"
         );
         insertAudit("EVALUATION", loginUser.id(), "学院确认评价", student.getName() + " 的评价已确认");
+    }
+
+    @Transactional
+    public void collegeReturnEvaluation(LoginUser loginUser, String evaluationId, Requests.EvaluationCollegeReturnRequest request) {
+        requireRole(loginUser, RoleType.COLLEGE_ADMIN);
+        EvaluationRecordEntity entity = evaluationRecordMapper.selectById(evaluationId);
+        if (entity == null) {
+            throw new BizException("璇勪环璁板綍涓嶅瓨鍦?");
+        }
+        StudentEntity student = requireStudent(entity.getStudentId());
+        if (!Objects.equals(student.getCollegeId(), loginUser.collegeId())) {
+            throw new BizException("鏃犳潈澶勭悊璇ヨ瘎浠?");
+        }
+        ensureEvaluationReviewable(entity);
+        applyEvaluationReturn(entity, request.collegeComment());
+        evaluationRecordMapper.updateById(entity);
+
+        createMessage(
+                requireUser(requireTeacher(entity.getTeacherId()).getUserId()).getId(),
+                "评价退回通知",
+                student.getName() + " 的评价被学院退回，请及时修改后重新提交。",
+                Optional.ofNullable(request.collegeComment()).filter(comment -> !comment.isBlank()).orElse("学院退回了你的评价，请尽快修改后重新提交。"),
+                "/teacher/evaluations"
+        );
+        insertAudit("EVALUATION", loginUser.id(), "评价退回", student.getName() + " 的评价已退回");
+    }
+
+    @Transactional
+    public Map<String, Object> batchCollegeConfirmEvaluations(LoginUser loginUser, Requests.BatchEvaluationCollegeConfirmRequest request) {
+        requireRole(loginUser, RoleType.COLLEGE_ADMIN);
+        if (request.evaluationIds() == null || request.evaluationIds().isEmpty()) {
+            throw new BizException("请选择至少一条待确认评价");
+        }
+
+        LinkedHashSet<String> evaluationIds = request.evaluationIds().stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(item -> !item.isBlank())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (evaluationIds.isEmpty()) {
+            throw new BizException("请选择至少一条待确认评价");
+        }
+
+        Map<String, EvaluationRecordEntity> evaluationMap = evaluationRecordMapper.selectBatchIds(evaluationIds).stream()
+                .collect(Collectors.toMap(EvaluationRecordEntity::getId, item -> item));
+
+        int processedCount = 0;
+        List<Map<String, Object>> skipped = new ArrayList<>();
+        for (String evaluationId : evaluationIds) {
+            EvaluationRecordEntity entity = evaluationMap.get(evaluationId);
+            if (entity == null) {
+                skipped.add(Map.of("id", evaluationId, "reason", "评价记录不存在"));
+                continue;
+            }
+            try {
+                StudentEntity student = requireStudent(entity.getStudentId());
+                if (!Objects.equals(student.getCollegeId(), loginUser.collegeId())) {
+                    throw new BizException("无权确认该评价");
+                }
+                ensureEvaluationConfirmable(entity);
+                if (entity.getFinalScore() == null) {
+                    throw new BizException("教师评价成绩不能为空");
+                }
+                entity.setCollegeScore(entity.getFinalScore());
+                entity.setCollegeComment(Optional.ofNullable(request.collegeComment()).orElse(""));
+                entity.setConfirmedByCollege(true);
+                entity.setReturnedByCollege(false);
+                entity.setCollegeReturnedAt(null);
+                entity.setCollegeConfirmedAt(LocalDateTime.now());
+                evaluationRecordMapper.updateById(entity);
+                createMessage(
+                        requireUser(student.getUserId()).getId(),
+                        "评价结果",
+                        "学院已确认实习评价",
+                        Optional.ofNullable(request.collegeComment()).filter(comment -> !comment.isBlank()).orElse("请查看最终成绩与评价维度结果。"),
+                        "/student/results"
+                );
+                processedCount++;
+            } catch (BizException exception) {
+                skipped.add(Map.of("id", evaluationId, "reason", exception.getMessage()));
+            }
+        }
+
+        insertAudit("EVALUATION", loginUser.id(), "批量确认评价", "处理 " + processedCount + " 条，跳过 " + skipped.size() + " 条");
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("processedCount", processedCount);
+        payload.put("skipped", skipped);
+        payload.put("skippedCount", skipped.size());
+        return payload;
+    }
+
+    @Transactional
+    public Map<String, Object> batchCollegeReturnEvaluations(LoginUser loginUser, Requests.BatchEvaluationCollegeReturnRequest request) {
+        requireRole(loginUser, RoleType.COLLEGE_ADMIN);
+        if (request.evaluationIds() == null || request.evaluationIds().isEmpty()) {
+            throw new BizException("璇烽€夋嫨鑷冲皯涓€鏉″緟澶勭悊璇勪环");
+        }
+
+        LinkedHashSet<String> evaluationIds = request.evaluationIds().stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(item -> !item.isBlank())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (evaluationIds.isEmpty()) {
+            throw new BizException("璇烽€夋嫨鑷冲皯涓€鏉″緟澶勭悊璇勪环");
+        }
+
+        Map<String, EvaluationRecordEntity> evaluationMap = evaluationRecordMapper.selectBatchIds(evaluationIds).stream()
+                .collect(Collectors.toMap(EvaluationRecordEntity::getId, item -> item));
+
+        int processedCount = 0;
+        List<Map<String, Object>> skipped = new ArrayList<>();
+        for (String evaluationId : evaluationIds) {
+            EvaluationRecordEntity entity = evaluationMap.get(evaluationId);
+            if (entity == null) {
+                skipped.add(Map.of("id", evaluationId, "reason", "评价记录不存在"));
+                continue;
+            }
+            try {
+                StudentEntity student = requireStudent(entity.getStudentId());
+                if (!Objects.equals(student.getCollegeId(), loginUser.collegeId())) {
+                    throw new BizException("该评价不属于当前学院");
+                }
+                ensureEvaluationReviewable(entity);
+                applyEvaluationReturn(entity, request.collegeComment());
+                evaluationRecordMapper.updateById(entity);
+                createMessage(
+                        requireUser(requireTeacher(entity.getTeacherId()).getUserId()).getId(),
+                        "评价退回通知",
+                        student.getName() + " 的评价被学院退回，请及时修改后重新提交。",
+                        Optional.ofNullable(request.collegeComment()).filter(comment -> !comment.isBlank()).orElse("学院退回了你的评价，请尽快修改后重新提交。"),
+                        "/teacher/evaluations"
+                );
+                processedCount++;
+            } catch (BizException exception) {
+                skipped.add(Map.of("id", evaluationId, "reason", exception.getMessage()));
+            }
+        }
+
+        insertAudit("EVALUATION", loginUser.id(), "鎵归噺閫€鍥炶瘎浠?", "澶勭悊 " + processedCount + " 鏉★紝璺宠繃 " + skipped.size() + " 鏉?");
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("processedCount", processedCount);
+        payload.put("skipped", skipped);
+        payload.put("skippedCount", skipped.size());
+        return payload;
     }
 
     public Map<String, Object> reportSummary(LoginUser loginUser) {
@@ -1001,6 +1171,8 @@ public class PhaseOneService {
         long archivedCount = forms.stream().filter(item -> FormStatus.ARCHIVED.getLabel().equals(item.getStatus())).count();
         long pendingArchiveCount = forms.stream().filter(item -> FormStatus.COLLEGE_REVIEWING.getLabel().equals(item.getStatus())).count();
         long confirmedEvaluationCount = evaluations.stream().filter(item -> Boolean.TRUE.equals(item.getConfirmedByCollege())).count();
+        long returnedEvaluationCount = evaluations.stream().filter(item -> Boolean.TRUE.equals(item.getReturnedByCollege())).count();
+        long pendingEvaluationCount = evaluations.stream().filter(item -> Boolean.TRUE.equals(item.getSubmittedToCollege()) && !Boolean.TRUE.equals(item.getConfirmedByCollege()) && !Boolean.TRUE.equals(item.getReturnedByCollege())).count();
         double averageScore = forms.stream()
                 .map(FormInstanceEntity::getScore)
                 .filter(Objects::nonNull)
@@ -1018,6 +1190,8 @@ public class PhaseOneService {
         overview.put("pendingArchiveCount", pendingArchiveCount);
         overview.put("archiveRate", forms.isEmpty() ? 0 : Math.round((archivedCount * 100.0) / forms.size()));
         overview.put("confirmedEvaluationCount", confirmedEvaluationCount);
+        overview.put("returnedEvaluationCount", returnedEvaluationCount);
+        overview.put("pendingEvaluationCount", pendingEvaluationCount);
         overview.put("averageScore", Math.round(averageScore * 10.0) / 10.0);
 
         Map<String, Object> studentsPayload = new LinkedHashMap<>();
@@ -1034,6 +1208,9 @@ public class PhaseOneService {
         Map<String, Object> evaluationsPayload = new LinkedHashMap<>();
         evaluationsPayload.put("summary", buildEvaluationSummary(evaluations));
         evaluationsPayload.put("scoreDistribution", buildScoreDistribution(evaluations));
+        evaluationsPayload.put("pendingCount", pendingEvaluationCount);
+        evaluationsPayload.put("confirmedCount", confirmedEvaluationCount);
+        evaluationsPayload.put("returnedCount", returnedEvaluationCount);
 
         Map<String, Object> organizationsPayload = new LinkedHashMap<>();
         organizationsPayload.put("cooperationDistribution", toCountList(organizations.stream().collect(Collectors.groupingBy(item -> Optional.ofNullable(item.getCooperationStatus()).orElse("未设置"), LinkedHashMap::new, Collectors.counting()))));
@@ -1457,8 +1634,10 @@ public class PhaseOneService {
 
     private Map<String, Object> buildEvaluationSummary(List<EvaluationRecordEntity> evaluations) {
         long confirmed = evaluations.stream().filter(item -> Boolean.TRUE.equals(item.getConfirmedByCollege())).count();
+        long returned = evaluations.stream().filter(item -> Boolean.TRUE.equals(item.getReturnedByCollege())).count();
+        long pending = evaluations.stream().filter(item -> Boolean.TRUE.equals(item.getSubmittedToCollege()) && !Boolean.TRUE.equals(item.getConfirmedByCollege()) && !Boolean.TRUE.equals(item.getReturnedByCollege())).count();
         double averageScore = evaluations.stream()
-                .map(item -> item.getCollegeScore() == null ? item.getFinalScore() : item.getCollegeScore())
+                .map(EvaluationRecordEntity::getFinalScore)
                 .filter(Objects::nonNull)
                 .mapToInt(Integer::intValue)
                 .average()
@@ -1466,7 +1645,8 @@ public class PhaseOneService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("total", evaluations.size());
         payload.put("confirmed", confirmed);
-        payload.put("pending", evaluations.size() - confirmed);
+        payload.put("returned", returned);
+        payload.put("pending", pending);
         payload.put("averageScore", Math.round(averageScore * 10.0) / 10.0);
         return payload;
     }
@@ -1482,7 +1662,7 @@ public class PhaseOneService {
         List<Map<String, Object>> payload = new ArrayList<>();
         for (int[] range : ranges) {
             long count = evaluations.stream()
-                    .map(item -> item.getCollegeScore() == null ? item.getFinalScore() : item.getCollegeScore())
+                    .map(EvaluationRecordEntity::getFinalScore)
                     .filter(Objects::nonNull)
                     .filter(score -> score >= range[0] && score <= range[1])
                     .count();
@@ -1605,11 +1785,11 @@ public class PhaseOneService {
     private CollegeEntity ensureCollegeForApplication(CollegeApplicationEntity application) {
         CollegeEntity existing = collegeMapper.selectOne(
                 Wrappers.<CollegeEntity>lambdaQuery()
-                        .eq(CollegeEntity::getSchoolName, application.getSchoolName())
                         .eq(CollegeEntity::getName, application.getCollegeName())
                         .last("limit 1")
         );
         if (existing != null) {
+            existing.setSchoolName(Optional.ofNullable(application.getSchoolName()).filter(item -> !item.isBlank()).orElse(existing.getSchoolName()));
             existing.setContactName(Optional.ofNullable(application.getContactName()).filter(item -> !item.isBlank()).orElse(existing.getContactName()));
             existing.setContactPhone(Optional.ofNullable(application.getContactPhone()).filter(item -> !item.isBlank()).orElse(existing.getContactPhone()));
             existing.setDescription(Optional.ofNullable(application.getDescription()).filter(item -> !item.isBlank()).orElse(existing.getDescription()));
@@ -1681,6 +1861,53 @@ public class PhaseOneService {
         return reviewComment + "；" + extraComment;
     }
 
+    private String resolveCurrentSchoolName() {
+        CollegeEntity existingCollege = collegeMapper.selectOne(
+                Wrappers.<CollegeEntity>lambdaQuery()
+                        .orderByAsc(CollegeEntity::getId)
+                        .last("limit 1")
+        );
+        if (existingCollege != null && existingCollege.getSchoolName() != null && !existingCollege.getSchoolName().isBlank()) {
+            return existingCollege.getSchoolName();
+        }
+
+        CollegeApplicationEntity latestApplication = collegeApplicationMapper.selectOne(
+                Wrappers.<CollegeApplicationEntity>lambdaQuery()
+                        .orderByDesc(CollegeApplicationEntity::getCreatedAt)
+                        .last("limit 1")
+        );
+        if (latestApplication != null && latestApplication.getSchoolName() != null && !latestApplication.getSchoolName().isBlank()) {
+            return latestApplication.getSchoolName();
+        }
+        return "本校";
+    }
+
+    @Transactional
+    public Map<String, Object> createCollege(LoginUser loginUser, Requests.CollegeCreateRequest request) {
+        requireRole(loginUser, RoleType.SUPER_ADMIN);
+        String collegeName = request.name().trim();
+        CollegeEntity existing = collegeMapper.selectOne(
+                Wrappers.<CollegeEntity>lambdaQuery()
+                        .eq(CollegeEntity::getName, collegeName)
+                        .last("limit 1")
+        );
+        if (existing != null) {
+            throw new BizException("该学院已存在");
+        }
+
+        CollegeEntity college = new CollegeEntity();
+        college.setId(IdGenerator.nextId("college"));
+        college.setSchoolName(resolveCurrentSchoolName());
+        college.setName(collegeName);
+        college.setContactName(Optional.ofNullable(request.contactName()).map(String::trim).orElse(""));
+        college.setContactPhone(Optional.ofNullable(request.contactPhone()).map(String::trim).orElse(""));
+        college.setDescription(Optional.ofNullable(request.description()).map(String::trim).orElse(""));
+        collegeMapper.insert(college);
+
+        insertAudit("OPERATION", loginUser.id(), "新增学院基础数据", college.getName());
+        return toCollegePayload(college);
+    }
+
     public List<Map<String, Object>> collegeAdmins(LoginUser loginUser) {
         requireRole(loginUser, RoleType.SUPER_ADMIN);
         return userAccountMapper.selectList(
@@ -1689,23 +1916,49 @@ public class PhaseOneService {
                                 .orderByAsc(UserAccountEntity::getCollegeId)
                                 .orderByAsc(UserAccountEntity::getAccount)
                 ).stream()
-                .map(user -> {
-                    CollegeEntity college = user.getCollegeId() == null ? null : collegeMapper.selectById(user.getCollegeId());
-                    Map<String, Object> payload = new LinkedHashMap<>();
-                    payload.put("id", user.getId());
-                    payload.put("account", user.getAccount());
-                    payload.put("name", user.getName());
-                    payload.put("status", user.getStatus());
-                    payload.put("mustChangePassword", Boolean.TRUE.equals(user.getMustChangePassword()));
-                    payload.put("lastLoginAt", user.getLastLoginAt());
-                    payload.put("collegeId", user.getCollegeId());
-                    payload.put("collegeName", college == null ? "" : college.getName());
-                    payload.put("schoolName", college == null ? "" : college.getSchoolName());
-                    payload.put("contactName", college == null ? "" : college.getContactName());
-                    payload.put("contactPhone", college == null ? "" : college.getContactPhone());
-                    return payload;
-                })
+                .map(this::toCollegeAdminPayload)
                 .toList();
+    }
+
+    @Transactional
+    public Map<String, Object> createCollegeAdmin(LoginUser loginUser, Requests.CollegeAdminCreateRequest request) {
+        requireRole(loginUser, RoleType.SUPER_ADMIN);
+        CollegeEntity college = collegeMapper.selectById(request.collegeId());
+        if (college == null) {
+            throw new BizException("目标学院不存在");
+        }
+        if (firstCollegeAdminUser(college.getId()) != null) {
+            throw new BizException("该学院已存在学院管理员账号");
+        }
+
+        String account = Optional.ofNullable(request.account()).map(String::trim).orElse("");
+        if (account.isBlank()) {
+            account = nextCollegeAdminAccount();
+        } else {
+            long exists = userAccountMapper.selectCount(
+                    Wrappers.<UserAccountEntity>lambdaQuery().eq(UserAccountEntity::getAccount, account)
+            );
+            if (exists > 0) {
+                throw new BizException("登录账号已存在");
+            }
+        }
+
+        UserAccountEntity user = new UserAccountEntity();
+        user.setId(IdGenerator.nextId("user"));
+        user.setAccount(account);
+        user.setName(request.name().trim());
+        user.setRole(RoleType.COLLEGE_ADMIN.name());
+        user.setPassword(PasswordUtils.sha256("123456"));
+        user.setMustChangePassword(true);
+        user.setStatus("ACTIVE");
+        user.setCollegeId(college.getId());
+        userAccountMapper.insert(user);
+
+        insertAudit("OPERATION", loginUser.id(), "创建学院管理员账号", college.getName() + " / " + user.getAccount());
+
+        Map<String, Object> payload = new LinkedHashMap<>(toCollegeAdminPayload(user));
+        payload.put("defaultPassword", "123456");
+        return payload;
     }
 
     @Transactional
@@ -1737,10 +1990,38 @@ public class PhaseOneService {
         insertAudit("OPERATION", loginUser.id(), "更新学院管理员账号状态", user.getName() + " -> " + normalizedStatus);
     }
 
+    private Map<String, Object> toCollegePayload(CollegeEntity college) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", college.getId());
+        payload.put("schoolName", Optional.ofNullable(college.getSchoolName()).orElse(""));
+        payload.put("name", Optional.ofNullable(college.getName()).orElse(""));
+        payload.put("contactName", Optional.ofNullable(college.getContactName()).orElse(""));
+        payload.put("contactPhone", Optional.ofNullable(college.getContactPhone()).orElse(""));
+        payload.put("description", Optional.ofNullable(college.getDescription()).orElse(""));
+        return payload;
+    }
+
+    private Map<String, Object> toCollegeAdminPayload(UserAccountEntity user) {
+        CollegeEntity college = user.getCollegeId() == null ? null : collegeMapper.selectById(user.getCollegeId());
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", user.getId());
+        payload.put("account", user.getAccount());
+        payload.put("name", user.getName());
+        payload.put("status", user.getStatus());
+        payload.put("mustChangePassword", Boolean.TRUE.equals(user.getMustChangePassword()));
+        payload.put("lastLoginAt", user.getLastLoginAt());
+        payload.put("collegeId", user.getCollegeId());
+        payload.put("collegeName", college == null ? "" : college.getName());
+        payload.put("schoolName", college == null ? "" : college.getSchoolName());
+        payload.put("contactName", college == null ? "" : college.getContactName());
+        payload.put("contactPhone", college == null ? "" : college.getContactPhone());
+        return payload;
+    }
+
     public Map<String, Object> basicData(LoginUser loginUser) {
         requireRole(loginUser, RoleType.SUPER_ADMIN);
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("colleges", collegeMapper.selectList(Wrappers.<CollegeEntity>lambdaQuery()));
+        payload.put("colleges", collegeMapper.selectList(Wrappers.<CollegeEntity>lambdaQuery().orderByAsc(CollegeEntity::getName)).stream().map(this::toCollegePayload).toList());
         payload.put("roles", Arrays.stream(RoleType.values()).map(Enum::name).toList());
         payload.put("formStatuses", Arrays.stream(FormStatus.values()).map(FormStatus::getLabel).toList());
         return payload;
@@ -2566,6 +2847,15 @@ public class PhaseOneService {
         }
     }
 
+    private void ensureEvaluationReviewable(EvaluationRecordEntity entity) {
+        if (!Boolean.TRUE.equals(entity.getSubmittedToCollege())) {
+            throw new BizException("教师尚未提交评价，当前不可处理");
+        }
+        if (Boolean.TRUE.equals(entity.getConfirmedByCollege())) {
+            throw new BizException("该评价已完成学院确认");
+        }
+    }
+
     private void validateReviewScore(Integer score) {
         if (score != null && (score < 0 || score > 100)) {
             throw new BizException("归档评分需在 0 到 100 之间");
@@ -2588,69 +2878,165 @@ public class PhaseOneService {
         createMessage(
                 requireUser(student.getUserId()).getId(),
                 Boolean.TRUE.equals(approved) ? "审核结果" : "退回通知",
+                Boolean.TRUE.equals(approved) ? "审批结果" : "退回通知",
                 entity.getTemplateName() + (Boolean.TRUE.equals(approved) ? "已归档" : "被学院退回"),
-                Optional.ofNullable(comment).orElse("请查看学院处理意见。"),
                 "/student/tasks"
         );
     }
 
     private void applyTeacherEvaluation(EvaluationRecordEntity entity, Requests.EvaluationSaveRequest request) {
-        if (request.finalScore() != null && (request.finalScore() < 0 || request.finalScore() > 100)) {
-            throw new BizException("建议成绩需在 0 到 100 之间");
-        }
+        List<Map<String, Object>> dimensions = normalizeEvaluationDimensions(request.studentId(), request.dimensionScores());
         entity.setStageComment(Optional.ofNullable(request.stageComment()).orElse(""));
         entity.setSummaryComment(Optional.ofNullable(request.summaryComment()).orElse(""));
-        entity.setFinalScore(Optional.ofNullable(request.finalScore()).orElse(90));
-        entity.setDimensionScoresJson(writeJson(normalizeEvaluationDimensions(request.dimensionScores())));
+        entity.setDimensionScoresJson(writeJson(dimensions));
+        entity.setFinalScore(calculateEvaluationFinalScore(dimensions));
         entity.setStrengthsComment(Optional.ofNullable(request.strengthsComment()).orElse(""));
         entity.setImprovementComment(Optional.ofNullable(request.improvementComment()).orElse(""));
         entity.setCollegeComment("");
         entity.setCollegeScore(null);
         entity.setSubmittedToCollege(true);
         entity.setConfirmedByCollege(false);
+        entity.setReturnedByCollege(false);
         entity.setEvaluatedAt(LocalDateTime.now());
+        entity.setCollegeReturnedAt(null);
         entity.setCollegeConfirmedAt(null);
     }
 
-    private List<Map<String, Object>> normalizeEvaluationDimensions(List<Map<String, Object>> dimensionScores) {
-        List<Map<String, Object>> rawList = (dimensionScores == null || dimensionScores.isEmpty()) ? defaultEvaluationDimensions() : dimensionScores;
-        List<Map<String, Object>> normalized = new ArrayList<>();
-        Set<String> keys = new HashSet<>();
+    private void applyEvaluationReturn(EvaluationRecordEntity entity, String comment) {
+        entity.setCollegeComment(Optional.ofNullable(comment).orElse(""));
+        entity.setCollegeScore(null);
+        entity.setSubmittedToCollege(false);
+        entity.setConfirmedByCollege(false);
+        entity.setReturnedByCollege(true);
+        entity.setCollegeReturnedAt(LocalDateTime.now());
+        entity.setCollegeConfirmedAt(null);
+    }
 
-        for (Map<String, Object> item : rawList) {
-            String key = Optional.ofNullable(item.get("key")).map(String::valueOf).map(String::trim).orElse("");
-            String label = Optional.ofNullable(item.get("label")).map(String::valueOf).map(String::trim).orElse("");
-            String comment = Optional.ofNullable(item.get("comment")).map(String::valueOf).map(String::trim).orElse("");
-            Integer score = parseInteger(item.get("score"));
-            if (key.isBlank() || label.isBlank()) {
-                throw new BizException("评价维度编码和名称不能为空");
-            }
-            if (!keys.add(key)) {
-                throw new BizException("评价维度不能重复");
-            }
-            if (score == null || score < 0 || score > 100) {
-                throw new BizException("评价维度分数需在 0 到 100 之间");
-            }
-            Map<String, Object> normalizedItem = new LinkedHashMap<>();
-            normalizedItem.put("key", key);
-            normalizedItem.put("label", label);
-            normalizedItem.put("score", score);
-            normalizedItem.put("comment", comment);
-            normalized.add(normalizedItem);
+    private String resolveEvaluationReviewStatus(EvaluationRecordEntity entity) {
+        if (Boolean.TRUE.equals(entity.getConfirmedByCollege())) {
+            return "已审批";
         }
+        if (Boolean.TRUE.equals(entity.getReturnedByCollege())) {
+            return "已退回";
+        }
+        if (Boolean.TRUE.equals(entity.getSubmittedToCollege())) {
+            return "待审批";
+        }
+        return "待提交";
+    }
+
+    private List<Map<String, Object>> normalizeEvaluationDimensions(String studentId, List<Map<String, Object>> dimensionScores) {
+        Map<String, Map<String, Object>> provided = new LinkedHashMap<>();
+        if (dimensionScores != null) {
+            for (Map<String, Object> item : dimensionScores) {
+                String key = normalizeEvaluationKey(item.get("key"));
+                if (key.isBlank()) {
+                    throw new BizException("评价维度编码不能为空");
+                }
+                if (provided.containsKey(key)) {
+                    throw new BizException("评价维度不能重复");
+                }
+                String label = normalizeEvaluationLabel(key, item.get("label"));
+                String comment = Optional.ofNullable(item.get("comment")).map(String::valueOf).map(String::trim).orElse("");
+                if ("process".equals(key)) {
+                    provided.put(key, createEvaluationDimension(key, label, calculateProcessScore(studentId), comment));
+                    continue;
+                }
+                Integer score = parseInteger(item.get("score"));
+                if (score == null || score < 0 || score > 100) {
+                    throw new BizException("评价维度分数需在 0 到 100 之间");
+                }
+                provided.put(key, createEvaluationDimension(key, label, score, comment));
+            }
+        }
+
+        String processComment = Optional.ofNullable(provided.get("process")).map(item -> String.valueOf(item.get("comment"))).orElse("");
+        List<Map<String, Object>> normalized = new ArrayList<>();
+        normalized.add(resolveEvaluationDimension(provided, "ethics", "师德表现", 90, ""));
+        normalized.add(resolveEvaluationDimension(provided, "teaching", "教学能力", 90, ""));
+        normalized.add(createEvaluationDimension("process", "过程评分", calculateProcessScore(studentId), processComment));
+        normalized.add(resolveEvaluationDimension(provided, "reflection", "教学反思", 90, ""));
         return normalized;
     }
 
-    private List<Map<String, Object>> defaultEvaluationDimensions() {
-        return List.of(
-                new LinkedHashMap<>(Map.of("key", "ethics", "label", "职业素养", "score", 90, "comment", "")),
-                new LinkedHashMap<>(Map.of("key", "teaching", "label", "教学实施", "score", 90, "comment", "")),
-                new LinkedHashMap<>(Map.of("key", "management", "label", "班级管理", "score", 90, "comment", "")),
-                new LinkedHashMap<>(Map.of("key", "reflection", "label", "反思改进", "score", 90, "comment", ""))
+    private Map<String, Object> resolveEvaluationDimension(Map<String, Map<String, Object>> provided, String key, String label, int defaultScore, String defaultComment) {
+        Map<String, Object> item = provided.get(key);
+        if (item != null) {
+            return item;
+        }
+        return createEvaluationDimension(key, label, defaultScore, defaultComment);
+    }
+
+    private Map<String, Object> createEvaluationDimension(String key, String label, Integer score, String comment) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("key", key);
+        item.put("label", label);
+        item.put("score", score == null ? 0 : score);
+        item.put("comment", Optional.ofNullable(comment).orElse(""));
+        return item;
+    }
+
+    private String normalizeEvaluationKey(Object value) {
+        if (value == null) {
+            return "";
+        }
+        String key = String.valueOf(value).trim();
+        return switch (key) {
+            case "management" -> "process";
+            case "ethics", "teaching", "process", "reflection" -> key;
+            default -> key;
+        };
+    }
+
+    private String normalizeEvaluationLabel(String key, Object rawLabel) {
+        String label = rawLabel == null ? "" : String.valueOf(rawLabel).trim();
+        if (!label.isBlank()) {
+            return label;
+        }
+        return switch (key) {
+            case "ethics" -> "师德表现";
+            case "teaching" -> "教学能力";
+            case "process" -> "过程评分";
+            case "reflection" -> "教学反思";
+            default -> key;
+        };
+    }
+
+    private Integer calculateProcessScore(String studentId) {
+        List<FormInstanceEntity> scoredForms = formInstanceMapper.selectList(
+                Wrappers.<FormInstanceEntity>lambdaQuery()
+                        .eq(FormInstanceEntity::getStudentId, studentId)
+                        .isNotNull(FormInstanceEntity::getScore)
+        );
+        double average = scoredForms.stream()
+                .map(FormInstanceEntity::getScore)
+                .filter(Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .average()
+                .orElse(0);
+        return (int) Math.round(average);
+    }
+
+    private int calculateEvaluationFinalScore(List<Map<String, Object>> dimensions) {
+        return (int) Math.round(
+                evaluationDimensionScore(dimensions, "ethics") * 0.2
+                        + evaluationDimensionScore(dimensions, "teaching") * 0.2
+                        + evaluationDimensionScore(dimensions, "process") * 0.4
+                        + evaluationDimensionScore(dimensions, "reflection") * 0.2
         );
     }
 
+    private int evaluationDimensionScore(List<Map<String, Object>> dimensions, String key) {
+        return dimensions.stream()
+                .filter(item -> key.equals(String.valueOf(item.get("key"))))
+                .map(item -> parseInteger(item.get("score")))
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(0);
+    }
+
     private Integer parseInteger(Object value) {
+
         if (value == null) {
             return null;
         }

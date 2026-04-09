@@ -1,5 +1,7 @@
 INSERT INTO college (id, school_name, name, contact_name, contact_phone, description) VALUES
-('college-001', '示范大学', '教育学院', '王主任', '13800000001', '一期演示学院');
+('college-001', '示范大学', '教育学院', '王主任', '13800000001', '一期演示学院'),
+('college-002', '示范大学', '文学院', '刘主任', '13800000011', '预置学院，等待分配管理员账号'),
+('college-003', '示范大学', '外国语学院', '陈主任', '13800000012', '预置学院，等待分配管理员账号');
 
 INSERT INTO user_account (id, account, name, role, password, must_change_password, status, college_id, last_login_at) VALUES
 ('user-super-001', 'root', '平台管理员', 'SUPER_ADMIN', '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', 0, 'ACTIVE', NULL, NULL),
@@ -50,11 +52,11 @@ INSERT INTO message_notice (id, user_id, type, title, content, link, read_flag, 
 INSERT INTO guidance_record (id, teacher_id, student_id, guidance_at, mode, problem, advice, follow_up) VALUES
 ('guide-001', 'teacher-001', 'student-001', '2026-03-09 13:00:00', '线上', '导入环节节奏偏慢', '增加情境提问和板书提示', '下次试讲继续跟进');
 
-INSERT INTO evaluation_record (id, teacher_id, student_id, stage_comment, summary_comment, final_score, dimension_scores_json, strengths_comment, improvement_comment, college_comment, college_score, submitted_to_college, confirmed_by_college, evaluated_at, college_confirmed_at) VALUES
-('eval-001', 'teacher-001', 'student-001', '课堂组织较为稳定', '具备成为语文教师的良好基础', 91, '[{"key":"ethics","label":"职业素养","score":93,"comment":"守时认真，沟通礼貌。"},{"key":"teaching","label":"教学实施","score":90,"comment":"课堂节奏稳定，提问设计较好。"},{"key":"management","label":"班级管理","score":88,"comment":"对课堂秩序把控基本到位。"},{"key":"reflection","label":"反思改进","score":92,"comment":"能根据听评课意见及时调整。"}]', '职业素养良好，备课认真。', '建议继续加强板书设计和分层提问。', '学院同意指导教师建议，建议继续保持课堂反思习惯。', 91, 1, 1, '2026-03-14 10:00:00', '2026-03-15 09:30:00');
+INSERT INTO evaluation_record (id, teacher_id, student_id, stage_comment, summary_comment, final_score, dimension_scores_json, strengths_comment, improvement_comment, college_comment, college_score, submitted_to_college, confirmed_by_college, returned_by_college, evaluated_at, college_returned_at, college_confirmed_at) VALUES
+('eval-001', 'teacher-001', 'student-001', '课堂组织较为稳定', '具备成为语文教师的良好基础', 91, '[{"key":"ethics","label":"职业素养","score":93,"comment":"守时认真，沟通礼貌。"},{"key":"teaching","label":"教学实施","score":90,"comment":"课堂节奏稳定，提问设计较好。"},{"key":"management","label":"班级管理","score":88,"comment":"对课堂秩序把控基本到位。"},{"key":"reflection","label":"反思改进","score":92,"comment":"能根据听评课意见及时调整。"}]', '职业素养良好，备课认真。', '建议继续加强板书设计和分层提问。', '学院同意指导教师建议，建议继续保持课堂反思习惯。', 91, 1, 1, 0, '2026-03-14 10:00:00', NULL, '2026-03-15 09:30:00');
 
 INSERT INTO college_application (id, school_name, college_name, contact_name, contact_phone, description, status, review_comment, created_at) VALUES
-('college-app-001', '滨江师范学院', '数学与统计学院', '赵老师', '13500000001', '申请开通教育实习全过程管理平台', '待审核', '', '2026-03-16 08:00:00');
+('college-app-001', '示范大学', '数学与统计学院', '赵老师', '13500000001', '申请开通教育实习全过程管理平台', '待审核', '', '2026-03-16 08:00:00');
 
 INSERT INTO audit_log (id, type, operator_id, action, detail, created_at) VALUES
 ('log-001', 'OPERATION', 'user-college-001', '审核实习申请', '通过张三的实习申请', '2026-03-04 08:00:00');

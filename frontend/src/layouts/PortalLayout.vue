@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus/es/components/message/index";
@@ -47,7 +47,7 @@ const menus = {
   ],
   SUPER_ADMIN: [
     { label: "平台看板", path: "/admin/dashboard" },
-    { label: "基础数据", path: "/admin/basic-data" },
+    { label: "学院申请", path: "/admin/basic-data" },
     { label: "参数配置", path: "/admin/params" },
     { label: "表单模板", path: "/admin/form-templates" },
     { label: "日志审计", path: "/admin/logs" },
@@ -220,3 +220,4 @@ onMounted(syncCurrentUser);
     </template>
   </el-dialog>
 </template>
+

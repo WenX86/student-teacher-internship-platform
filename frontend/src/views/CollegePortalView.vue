@@ -42,6 +42,7 @@ const latestStudentImportResult = ref(null);
 const latestTeacherImportResult = ref(null);
 
 const pageSize = 5;
+const messagePageSize = 10;
 
 const studentForm = reactive({ name: "", studentNo: "", major: "", className: "", phone: "", internshipType: "TEACHING" });
 const teacherForm = reactive({ name: "", employeeNo: "", department: "", phone: "" });
@@ -61,7 +62,7 @@ const pendingMentorApplications = computed(() => mentorApplications.value.filter
 const pendingInternshipApplications = computed(() => internshipApplications.value.filter((item) => item.status === "待学院审批"));
 const archiveForms = computed(() => forms.value.filter((item) => ["学院审核中", "已归档", "学院退回"].includes(item.status)));
 const riskForms = computed(() => forms.value.filter((item) => ["教师退回", "学院退回"].includes(item.status)));
-const pendingEvaluationRecords = computed(() => evaluations.value.filter((item) => item.submittedToCollege && !item.confirmedByCollege));
+const pendingEvaluationRecords = computed(() => evaluations.value.filter((item) => item.submittedToCollege && !item.confirmedByCollege && !item.returnedByCollege));
 const actionableArchiveRows = computed(() => archiveSelection.value.filter((item) => item.status === "学院审核中"));
 const archivableArchiveCount = computed(() => archiveForms.value.filter((item) => item.status === "学院审核中").length);
 const unreadCollegeMessages = computed(() => messages.value.filter((item) => !item.read));
@@ -82,7 +83,61 @@ const filteredMessageSource = computed(() => {
 });
 
 function canConfirmEvaluation(row) {
-  return row?.submittedToCollege && !row?.confirmedByCollege;
+  return row?.reviewStatus === "待审批" || (row?.submittedToCollege && !row?.confirmedByCollege && !row?.returnedByCollege);
+}
+
+const archiveExportSelection = ref([]);
+const evaluationExportSelection = ref([]);
+const evaluationActionSelection = ref([]);
+
+async function batchConfirmEvaluations() {
+  if (!selectedConfirmableEvaluations.value.length) {
+    ElMessage.warning("当前没有可批量审批的评价");
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(`确认批量审批 ${selectedConfirmableEvaluations.value.length} 条评价？`, "批量审批", {
+      confirmButtonText: "审批",
+      cancelButtonText: "取消",
+      type: "warning",
+    });
+    const result = await post("/evaluations/batch-college-confirm", {
+      evaluationIds: selectedConfirmableEvaluations.value.map((item) => item.id),
+      collegeComment: "",
+    });
+    ElMessage.success(`批量审批已处理 ${result?.processedCount || 0} 条${Number(result?.skippedCount || 0) ? `，跳过 ${result.skippedCount} 条` : ""}`);
+    evaluationActionSelection.value = [];
+    await loadAll();
+  } catch (error) {
+    if (error !== "cancel") {
+      ElMessage.error(error.message);
+    }
+  }
+}
+
+async function batchReturnEvaluations() {
+  if (!selectedConfirmableEvaluations.value.length) {
+    ElMessage.warning("当前没有可批量退回的评价");
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(`确认批量退回 ${selectedConfirmableEvaluations.value.length} 条评价？`, "批量退回", {
+      confirmButtonText: "退回",
+      cancelButtonText: "取消",
+      type: "warning",
+    });
+    const result = await post("/evaluations/batch-college-return", {
+      evaluationIds: selectedConfirmableEvaluations.value.map((item) => item.id),
+      collegeComment: "",
+    });
+    ElMessage.success(`批量退回已处理 ${result?.processedCount || 0} 条${Number(result?.skippedCount || 0) ? `，跳过 ${result.skippedCount} 条` : ""}`);
+    evaluationActionSelection.value = [];
+    await loadAll();
+  } catch (error) {
+    if (error !== "cancel") {
+      ElMessage.error(error.message);
+    }
+  }
 }
 
 const {
@@ -153,7 +208,7 @@ const {
 } = useFilteredPagination({
   source: filteredMessageSource,
   matcher: (item) => [item.type, item.title, item.content],
-  pageSize,
+  pageSize: messagePageSize,
 });
 const {
   keyword: evaluationKeyword,
@@ -170,7 +225,7 @@ const {
     item.summaryComment,
     item.strengthsComment,
     item.improvementComment,
-    item.confirmedByCollege ? "已确认" : "待确认",
+    item.reviewStatus || (item.confirmedByCollege ? "已审批" : item.returnedByCollege ? "已退回" : item.submittedToCollege ? "待审批" : "待提交"),
   ],
   pageSize,
 });
@@ -183,6 +238,115 @@ const {
   source: alerts,
   matcher: (item) => [item.category, item.title, item.content, item.targetName, item.level],
   pageSize,
+});
+
+const selectedArchiveExportRows = computed(() => archiveForms.value.filter((item) => archiveExportSelection.value.includes(item.id)));
+const selectedEvaluationExportRows = computed(() => evaluations.value.filter((item) => evaluationExportSelection.value.includes(item.id)));
+const selectedConfirmableEvaluations = computed(() => evaluations.value.filter((item) => evaluationActionSelection.value.includes(item.id) && canConfirmEvaluation(item)));
+
+function syncSelectionIds(selectionRef, rows) {
+  const validIds = new Set(rows.map((item) => item.id));
+  selectionRef.value = selectionRef.value.filter((id) => validIds.has(id));
+}
+
+function isRowChecked(selectionRef, row) {
+  return selectionRef.value.includes(row.id);
+}
+
+function toggleRowChecked(selectionRef, row, checked) {
+  const nextSelection = new Set(selectionRef.value);
+  if (checked) {
+    nextSelection.add(row.id);
+  } else {
+    nextSelection.delete(row.id);
+  }
+  selectionRef.value = Array.from(nextSelection);
+}
+
+function collectPageIds(rows, predicate = () => true) {
+  return rows.filter((item) => predicate(item)).map((item) => item.id);
+}
+
+function isPageChecked(selectionRef, rows, predicate = () => true) {
+  const ids = collectPageIds(rows, predicate);
+  return ids.length > 0 && ids.every((id) => selectionRef.value.includes(id));
+}
+
+function isPageIndeterminate(selectionRef, rows, predicate = () => true) {
+  const ids = collectPageIds(rows, predicate);
+  if (!ids.length) {
+    return false;
+  }
+  const checkedCount = ids.filter((id) => selectionRef.value.includes(id)).length;
+  return checkedCount > 0 && checkedCount < ids.length;
+}
+
+function togglePageChecked(selectionRef, rows, checked, predicate = () => true) {
+  const nextSelection = new Set(selectionRef.value);
+  collectPageIds(rows, predicate).forEach((id) => {
+    if (checked) {
+      nextSelection.add(id);
+    } else {
+      nextSelection.delete(id);
+    }
+  });
+  selectionRef.value = Array.from(nextSelection);
+}
+
+const archiveExportPageChecked = computed(() => isPageChecked(archiveExportSelection, pagedArchives.value));
+const archiveExportPageIndeterminate = computed(() => isPageIndeterminate(archiveExportSelection, pagedArchives.value));
+const evaluationExportPageChecked = computed(() => isPageChecked(evaluationExportSelection, pagedEvaluations.value));
+const evaluationExportPageIndeterminate = computed(() => isPageIndeterminate(evaluationExportSelection, pagedEvaluations.value));
+const evaluationActionPageChecked = computed(() => isPageChecked(evaluationActionSelection, pagedEvaluations.value, canConfirmEvaluation));
+const evaluationActionPageIndeterminate = computed(() => isPageIndeterminate(evaluationActionSelection, pagedEvaluations.value, canConfirmEvaluation));
+const evaluationActionPageSelectableCount = computed(() => collectPageIds(pagedEvaluations.value, canConfirmEvaluation).length);
+
+function isArchiveExportChecked(row) {
+  return isRowChecked(archiveExportSelection, row);
+}
+
+function toggleArchiveExportChecked(row, checked) {
+  toggleRowChecked(archiveExportSelection, row, checked);
+}
+
+function toggleArchiveExportPageChecked(checked) {
+  togglePageChecked(archiveExportSelection, pagedArchives.value, checked);
+}
+
+function isEvaluationExportChecked(row) {
+  return isRowChecked(evaluationExportSelection, row);
+}
+
+function toggleEvaluationExportChecked(row, checked) {
+  toggleRowChecked(evaluationExportSelection, row, checked);
+}
+
+function toggleEvaluationExportPageChecked(checked) {
+  togglePageChecked(evaluationExportSelection, pagedEvaluations.value, checked);
+}
+
+function isEvaluationActionChecked(row) {
+  return isRowChecked(evaluationActionSelection, row);
+}
+
+function toggleEvaluationActionChecked(row, checked) {
+  if (!canConfirmEvaluation(row)) {
+    return;
+  }
+  toggleRowChecked(evaluationActionSelection, row, checked);
+}
+
+function toggleEvaluationActionPageChecked(checked) {
+  togglePageChecked(evaluationActionSelection, pagedEvaluations.value, checked, canConfirmEvaluation);
+}
+
+watch(archiveForms, (rows) => {
+  syncSelectionIds(archiveExportSelection, rows);
+});
+
+watch(evaluations, (rows) => {
+  syncSelectionIds(evaluationExportSelection, rows);
+  syncSelectionIds(evaluationActionSelection, rows.filter((item) => canConfirmEvaluation(item)));
 });
 
 function attachmentList(row) {
@@ -270,21 +434,149 @@ function downloadCsvTemplate(filename, headers, rows) {
   triggerBlobDownload(blob, filename);
 }
 
-function downloadExcelTable(filename, headers, rows, options = {}) {
+function normalizeTabularExport(headers, rows) {
+  const columns = headers.map((item) => (typeof item === "string" ? { label: item, key: null } : item));
+  const normalizedHeaders = columns.map((item) => item.label ?? String(item.key ?? ""));
+  const normalizedRows = rows.map((row) => {
+    if (Array.isArray(row)) {
+      return row;
+    }
+    return columns.map((item) => row?.[item.key] ?? "");
+  });
+  return { normalizedHeaders, normalizedRows, columns };
+}
+
+function downloadCsv(filename, headers, rows) {
+  const { normalizedHeaders, normalizedRows } = normalizeTabularExport(headers, rows);
+  downloadCsvTemplate(filename, normalizedHeaders, normalizedRows);
+}
+
+function downloadStyledExcelTable(filename, headers, rows, options = {}) {
+  const { normalizedHeaders, normalizedRows } = normalizeTabularExport(headers, rows);
   const title = options.title ? `<div style="font-size:16px;font-weight:700;margin-bottom:10px;color:#0f172a;">${escapeHtml(options.title)}</div>` : "";
   const summary = options.summary ? `<div style="margin-bottom:12px;color:#475569;">${escapeHtml(options.summary)}</div>` : "";
-  const headerHtml = headers.map((item) => `<th style="background:#0f766e;color:#ffffff;border:1px solid #cbd5e1;padding:8px 10px;text-align:left;">${escapeHtml(item)}</th>`).join("");
-  const bodyHtml = rows.map((row, rowIndex) => {
-    const rowStyle = typeof options.rowStyleResolver === "function" ? options.rowStyleResolver(row, rowIndex) : {};
+  const headerHtml = normalizedHeaders.map((item) => `<th style="background:#0f766e;color:#ffffff;border:1px solid #cbd5e1;padding:8px 10px;text-align:left;">${escapeHtml(item)}</th>`).join("");
+  const bodyHtml = normalizedRows.map((row, rowIndex) => {
+    const rowStyle = typeof options.rowStyleResolver === "function" ? options.rowStyleResolver(rows[rowIndex], rowIndex) : {};
     const cells = row.map((cell, cellIndex) => {
-      const cellStyle = rowStyle.cells?.[cellIndex] || rowStyle.defaultCellStyle || "border:1px solid #cbd5e1;padding:8px 10px;mso-number-format:'\\@';";
+      const cellStyle = rowStyle.cells?.[cellIndex] || rowStyle.defaultCellStyle || "border:1px solid #cbd5e1;padding:8px 10px;mso-number-format:'\@';";
       return `<td style="${cellStyle}">${escapeHtml(cell)}</td>`;
     }).join("");
     const trStyle = rowStyle.rowStyle ? ` style="${rowStyle.rowStyle}"` : "";
     return `<tr${trStyle}>${cells}</tr>`;
   }).join("");
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8" /></head><body>${title}${summary}<table>${headerHtml ? `<thead><tr>${headerHtml}</tr></thead>` : ""}<tbody>${bodyHtml}</tbody></table></body></html>`;
-  const blob = new Blob(["\uFEFF" + html], { type: "application/vnd.ms-excel;charset=utf-8;" });
+  const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-excel;charset=utf-8;" });
+  triggerBlobDownload(blob, filename);
+}
+
+function escapeXml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function sanitizeWorksheetName(name) {
+  const normalizedName = String(name || "Sheet1").replace(/[\/:*?\[\]]/g, "-").trim();
+  return (normalizedName || "Sheet1").slice(0, 31);
+}
+
+function resolveSpreadsheetValue(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return { type: "Number", value: String(value) };
+  }
+  const text = String(value ?? "");
+  if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(text)) {
+    return { type: "Number", value: text };
+  }
+  return { type: "String", value: text };
+}
+
+function buildSpreadsheetCell(value, styleId) {
+  const resolved = resolveSpreadsheetValue(value);
+  const cellStyleId = styleId || (resolved.type === "Number" ? "cell-number" : "cell-text");
+  return `<Cell ss:StyleID="${cellStyleId}"><Data ss:Type="${resolved.type}">${escapeXml(resolved.value)}</Data></Cell>`;
+}
+
+function buildSpreadsheetRow(values, options = {}) {
+  const mergeAcross = Number(options.mergeAcross || 0);
+  const styleId = options.styleId || "cell-text";
+  if (mergeAcross > 0) {
+    return `<Row><Cell ss:StyleID="${styleId}" ss:MergeAcross="${mergeAcross}"><Data ss:Type="String">${escapeXml(values[0] ?? "")}</Data></Cell></Row>`;
+  }
+  return `<Row>${values.map((value, index) => buildSpreadsheetCell(value, options.cellStyleIds?.[index] || styleId)).join("")}</Row>`;
+}
+
+function estimateSpreadsheetWidth(values) {
+  const longest = values.reduce((max, value) => Math.max(max, String(value ?? "").length), 0);
+  return Math.min(260, Math.max(72, longest * 11 + 20));
+}
+
+function downloadExcelTable(filename, headers, rows, options = {}) {
+  const { normalizedHeaders, normalizedRows } = normalizeTabularExport(headers, rows);
+  const worksheetName = sanitizeWorksheetName(options.worksheetName || filename.replace(/\.[^.]+$/, "") || "Sheet1");
+  const metaRows = [];
+  if (options.title) {
+    metaRows.push(buildSpreadsheetRow([options.title], { styleId: "meta-title", mergeAcross: Math.max(normalizedHeaders.length - 1, 0) }));
+  }
+  if (options.summary) {
+    metaRows.push(buildSpreadsheetRow([options.summary], { styleId: "meta-summary", mergeAcross: Math.max(normalizedHeaders.length - 1, 0) }));
+  }
+  const headerRowXml = buildSpreadsheetRow(normalizedHeaders, {
+    cellStyleIds: normalizedHeaders.map(() => "header"),
+  });
+  const bodyRowsXml = normalizedRows.map((row) => buildSpreadsheetRow(row)).join("");
+  const columnXml = normalizedHeaders.map((header, index) => {
+    const values = [header, ...normalizedRows.map((row) => row[index])];
+    return `<Column ss:AutoFitWidth="0" ss:Width="${estimateSpreadsheetWidth(values)}"/>`;
+  }).join("");
+  const tableRowsXml = `${metaRows.join("")}${headerRowXml}${bodyRowsXml}`;
+  const expandedColumnCount = Math.max(normalizedHeaders.length, 1);
+  const expandedRowCount = Math.max(metaRows.length + 1 + normalizedRows.length, 1);
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles>
+    <Style ss:ID="header">
+      <Font ss:Bold="1" ss:Color="#FFFFFF"/>
+      <Interior ss:Color="#0F766E" ss:Pattern="Solid"/>
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D1D5DB"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="cell-text">
+      <Alignment ss:Vertical="Center" ss:WrapText="1"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="cell-number">
+      <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="meta-title">
+      <Font ss:Bold="1" ss:Size="14"/>
+    </Style>
+    <Style ss:ID="meta-summary">
+      <Font ss:Color="#475569"/>
+    </Style>
+  </Styles>
+  <Worksheet ss:Name="${escapeXml(worksheetName)}">
+    <Table ss:ExpandedColumnCount="${expandedColumnCount}" ss:ExpandedRowCount="${expandedRowCount}" x:FullColumns="1" x:FullRows="1">${columnXml}${tableRowsXml}</Table>
+    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+      <Selected/>
+      <ProtectObjects>False</ProtectObjects>
+      <ProtectScenarios>False</ProtectScenarios>
+    </WorksheetOptions>
+  </Worksheet>
+</Workbook>`;
+  const blob = new Blob(["﻿" + xml], { type: "application/vnd.ms-excel;charset=utf-8;" });
   triggerBlobDownload(blob, filename);
 }
 
@@ -669,59 +961,85 @@ function openBatchArchiveReview(approved) {
   archiveDialog.value = true;
 }
 
-function downloadCsv(filename, columns, rows) {
-  const header = columns.map((column) => column.label).join(",");
-  const body = rows
-    .map((row) =>
-      columns
-        .map((column) => {
-          const raw = row[column.key] ?? "";
-          const value = String(raw).replace(/"/g, '""');
-          return `"${value}"`;
-        })
-        .join(",")
-    )
-    .join("\n");
-  const blob = new Blob([`\uFEFF${header}\n${body}`], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
 function exportArchiveLedger() {
-  const rows = filteredArchives.value.map((item) => ({
+  const rows = selectedArchiveExportRows.value.map((item) => ({
     studentName: item.studentName,
     studentNo: item.studentNo,
     templateName: item.templateName,
-    status: item.status,
-    title: item.content?.title || "未填写标题",
-    summary: item.content?.summary || "",
+    mentorTeacherName: item.mentorTeacherName || "",
+    status: getStatusMeta(item.status).label,
+    title: item.content?.title || "暂无标题",
+    summary: item.content?.summary || "暂无摘要",
+    attachments: attachmentList(item).map((attachment) => attachment.name || "附件").join("；"),
     score: item.score ?? "",
     updatedAt: item.updatedAt || "",
   }));
   if (!rows.length) {
-    ElMessage.warning("暂无可导出的归档台账");
+    ElMessage.warning("请先勾选要导出的归档台账");
     return;
   }
-  downloadCsv(
-    "archive-ledger.csv",
+  downloadExcelTable(
+    "archive-ledger.xls",
     [
       { key: "studentName", label: "学生姓名" },
       { key: "studentNo", label: "学号" },
-      { key: "templateName", label: "模板名称" },
-      { key: "status", label: "状态" },
+      { key: "templateName", label: "表单模板" },
+      { key: "mentorTeacherName", label: "指导教师" },
+      { key: "status", label: "归档状态" },
       { key: "title", label: "标题" },
-      { key: "summary", label: "摘要" },
+      { key: "summary", label: "内容摘要" },
+      { key: "attachments", label: "附件" },
       { key: "score", label: "成绩" },
       { key: "updatedAt", label: "更新时间" },
     ],
     rows,
+    {
+      worksheetName: "归档台账",
+    },
   );
+  archiveExportSelection.value = [];
+}
+
+function exportEvaluationSummaryExcel() {
+  const rows = selectedEvaluationExportRows.value.map((item) => {
+    const reviewStatus = item.reviewStatus || (item.confirmedByCollege ? "已审批" : item.returnedByCollege ? "已退回" : item.submittedToCollege ? "待审批" : "待提交");
+    return {
+      studentName: item.student?.name,
+      studentNo: item.student?.studentNo,
+      teacherName: item.teacher?.name,
+      dimensionSummary: (item.dimensionScores || []).map((scoreItem) => `${scoreItem.label} ${scoreItem.score}`).join("；"),
+      reviewStatus: getStatusMeta(reviewStatus).label,
+      recommendedScore: item.recommendedScore ?? "",
+      finalScore: item.finalScore ?? "",
+      collegeComment: item.collegeComment || "",
+      evaluatedAt: item.evaluatedAt || "",
+      collegeConfirmedAt: item.collegeConfirmedAt || "",
+    };
+  });
+  if (!rows.length) {
+    ElMessage.warning("请先勾选要导出的评价汇总");
+    return;
+  }
+  downloadExcelTable(
+    "evaluation-summary.xls",
+    [
+      { key: "studentName", label: "学生姓名" },
+      { key: "studentNo", label: "学号" },
+      { key: "teacherName", label: "指导教师" },
+      { key: "dimensionSummary", label: "评分维度" },
+      { key: "reviewStatus", label: "审批状态" },
+      { key: "recommendedScore", label: "推荐分" },
+      { key: "finalScore", label: "最终成绩" },
+      { key: "collegeComment", label: "学院评语" },
+      { key: "evaluatedAt", label: "提交时间" },
+      { key: "collegeConfirmedAt", label: "审批时间" },
+    ],
+    rows,
+    {
+      worksheetName: "评价汇总",
+    },
+  );
+  evaluationExportSelection.value = [];
 }
 
 function exportStudentReport() {
@@ -1102,28 +1420,35 @@ watch(messageReadFilter, () => {
     <template v-else-if="section === 'archive'">
       <div class="page-header">
         <div>
-          <h2>表单归档中心</h2>
-          <div class="subtle">统一处理学院审核中的表单，支持批量归档、批量退回和台账导出。</div>
+          <h2>归档中心</h2>
+          <div class="subtle">统一查看学院中的表单，支持勾选后批量导出归档台账。</div>
         </div>
-        <div style="display: grid; gap: 10px; justify-items: end">
-          <el-space wrap>
-            <el-tag type="warning">待归档 {{ archivableArchiveCount }} 条</el-tag>
-            <el-tag type="info">已选 {{ actionableArchiveRows.length }} 条</el-tag>
-          </el-space>
-          <div style="display: flex; gap: 12px; flex-wrap: wrap">
-            <el-button plain @click="exportArchiveLedger">导出归档台账</el-button>
-            <el-button type="warning" plain :disabled="!actionableArchiveRows.length" @click="openBatchArchiveReview(false)">批量退回</el-button>
-            <el-button type="primary" color="#0f766e" :disabled="!actionableArchiveRows.length" @click="openBatchArchiveReview(true)">批量归档</el-button>
+        <div class="page-actions">
+          <div class="toolbar-cluster">
+            <el-tag type="info">已选导出 {{ selectedArchiveExportRows.length }} 条</el-tag>
+            <el-button plain :disabled="!selectedArchiveExportRows.length" @click="exportArchiveLedger">批量导出</el-button>
           </div>
         </div>
       </div>
-      <FilterTablePanel v-model:keyword="archiveKeyword" v-model:current-page="archivePage" placeholder="筛选学生、表单模板、标题、状态" :total="filteredArchives.length" :page-size="pageSize">
+      <FilterTablePanel v-model:keyword="archiveKeyword" v-model:current-page="archivePage" placeholder="筛选学生、模板、标题、状态" :total="filteredArchives.length" :page-size="pageSize">
         <el-space wrap style="margin-bottom: 12px">
-          <el-tag type="warning">仅状态为“学院审核中”的表单支持批量处理</el-tag>
+          <el-tag type="warning">仅展示学院审核中的表单</el-tag>
           <el-tag type="info">当前页 {{ pagedArchives.length }} 条</el-tag>
         </el-space>
-        <el-table :data="pagedArchives" style="margin-top: 16px" @selection-change="handleArchiveSelectionChange">
-          <el-table-column type="selection" width="50" :selectable="(row) => row.status === '学院审核中'" />
+        <el-table :data="pagedArchives" style="margin-top: 16px">
+          <el-table-column width="84" align="center">
+            <template #header>
+              <div class="table-selection-header">
+                <span>导出</span>
+                <el-checkbox :model-value="archiveExportPageChecked" :indeterminate="archiveExportPageIndeterminate" @change="toggleArchiveExportPageChecked" />
+              </div>
+            </template>
+            <template #default="{ row }">
+              <div class="table-selection-cell">
+                <el-checkbox :model-value="isArchiveExportChecked(row)" @change="(value) => toggleArchiveExportChecked(row, value)" />
+              </div>
+            </template>
+          </el-table-column>
           <el-table-column label="学生" min-width="160"><template #default="{ row }">{{ row.studentName }} / {{ row.studentNo }}</template></el-table-column>
           <el-table-column prop="templateName" label="表单模板" min-width="160" />
           <el-table-column prop="mentorTeacherName" label="指导教师" min-width="120" />
@@ -1134,7 +1459,7 @@ watch(messageReadFilter, () => {
           </el-table-column>
           <el-table-column label="内容摘要" min-width="260">
             <template #default="{ row }">
-              <div>{{ row.content?.title || "未填写标题" }}</div>
+              <div>{{ row.content?.title || "暂无标题" }}</div>
               <div class="subtle">{{ row.content?.summary || "暂无摘要" }}</div>
             </template>
           </el-table-column>
@@ -1155,12 +1480,6 @@ watch(messageReadFilter, () => {
             </template>
           </el-table-column>
           <el-table-column prop="score" label="成绩" width="90" />
-          <el-table-column label="审批" width="120">
-            <template #default="{ row }">
-              <el-button v-if="row.status === '学院审核中'" link type="primary" @click="openArchiveReview(row)">归档处理</el-button>
-              <span v-else class="subtle">无需处理</span>
-            </template>
-          </el-table-column>
           <template #empty><el-empty description="暂无归档数据" /></template>
         </el-table>
       </FilterTablePanel>
@@ -1169,26 +1488,64 @@ watch(messageReadFilter, () => {
     <template v-else-if="section === 'evaluations'">
       <div class="page-header">
         <div>
-          <h2>评价确认</h2>
-          <div class="subtle">查看教师提交的实习评价，并完成学院终审确认。</div>
+          <h2>评价汇总</h2>
+          <div class="subtle">汇总教师评价结果，支持分组勾选后批量导出、批量退回和批量审批。</div>
+        </div>
+        <div class="page-actions">
+          <div class="toolbar-cluster">
+            <el-tag type="info">导出已选 {{ selectedEvaluationExportRows.length }} 条</el-tag>
+            <el-button plain :disabled="!selectedEvaluationExportRows.length" @click="exportEvaluationSummaryExcel">批量导出</el-button>
+          </div>
+          <div class="toolbar-cluster">
+            <el-tag type="warning">待审批 {{ reportCenter.evaluations?.summary?.pending || 0 }} 条</el-tag>
+            <el-tag type="info">审批已选 {{ selectedConfirmableEvaluations.length }} 条</el-tag>
+            <el-button type="warning" plain :disabled="!selectedConfirmableEvaluations.length" @click="batchReturnEvaluations">批量退回</el-button>
+            <el-button type="primary" color="#0f766e" :disabled="!selectedConfirmableEvaluations.length" @click="batchConfirmEvaluations">批量审批</el-button>
+          </div>
         </div>
       </div>
-      <FilterTablePanel v-model:keyword="evaluationKeyword" v-model:current-page="evaluationPage" placeholder="筛选学生、教师、评价内容和确认状态" :total="filteredEvaluations.length" :page-size="pageSize">
+      <FilterTablePanel v-model:keyword="evaluationKeyword" v-model:current-page="evaluationPage" placeholder="筛选学生、教师、审批状态、评语" :total="filteredEvaluations.length" :page-size="pageSize">
         <el-table :data="pagedEvaluations" style="margin-top: 16px">
+          <el-table-column width="84" align="center">
+            <template #header>
+              <div class="table-selection-header">
+                <span>导出</span>
+                <el-checkbox :model-value="evaluationExportPageChecked" :indeterminate="evaluationExportPageIndeterminate" @change="toggleEvaluationExportPageChecked" />
+              </div>
+            </template>
+            <template #default="{ row }">
+              <div class="table-selection-cell">
+                <el-checkbox :model-value="isEvaluationExportChecked(row)" @change="(value) => toggleEvaluationExportChecked(row, value)" />
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column width="84" align="center">
+            <template #header>
+              <div class="table-selection-header">
+                <span>审批</span>
+                <el-checkbox :model-value="evaluationActionPageChecked" :indeterminate="evaluationActionPageIndeterminate" :disabled="!evaluationActionPageSelectableCount" @change="toggleEvaluationActionPageChecked" />
+              </div>
+            </template>
+            <template #default="{ row }">
+              <div class="table-selection-cell">
+                <el-checkbox :model-value="isEvaluationActionChecked(row)" :disabled="!canConfirmEvaluation(row)" @change="(value) => toggleEvaluationActionChecked(row, value)" />
+              </div>
+            </template>
+          </el-table-column>
           <el-table-column label="学生" min-width="160"><template #default="{ row }">{{ row.student?.name }} / {{ row.student?.studentNo }}</template></el-table-column>
           <el-table-column label="指导教师" width="130"><template #default="{ row }">{{ row.teacher?.name }}</template></el-table-column>
-          <el-table-column label="维度评分" min-width="260"><template #default="{ row }"><el-space wrap><el-tag v-for="item in row.dimensionScores || []" :key="`${row.id}-${item.key}`" type="success">{{ item.label }} {{ item.score }}</el-tag></el-space></template></el-table-column>
-          <el-table-column prop="recommendedScore" label="教师建议分" width="100" />
+          <el-table-column label="评分维度" min-width="260"><template #default="{ row }"><el-space wrap><el-tag v-for="item in row.dimensionScores || []" :key="`${row.id}-${item.key}`" type="success">{{ item.label }} {{ item.score }}</el-tag></el-space></template></el-table-column>
+          <el-table-column prop="recommendedScore" label="推荐分" width="100" />
           <el-table-column prop="finalScore" label="最终成绩" width="100" />
-          <el-table-column label="确认状态" width="100">
+          <el-table-column label="审批状态" width="100">
             <template #default="{ row }">
-              <el-tag :type="row.confirmedByCollege ? 'success' : 'warning'">{{ row.confirmedByCollege ? "已确认" : "待确认" }}</el-tag>
+              <el-tag :type="getStatusMeta(row.reviewStatus).type">{{ getStatusMeta(row.reviewStatus).label }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="120">
             <template #default="{ row }">
-              <el-button v-if="canConfirmEvaluation(row)" link type="primary" @click="openEvaluationReview(row)">确认评价</el-button>
-              <span v-else class="subtle">无需处理</span>
+              <el-button v-if="canConfirmEvaluation(row)" link type="primary" @click="openEvaluationReview(row)">审批评价</el-button>
+              <span v-else class="subtle">无需操作</span>
             </template>
           </el-table-column>
           <template #empty><el-empty description="暂无评价记录" /></template>
@@ -1215,7 +1572,7 @@ watch(messageReadFilter, () => {
         <div class="metric-card"><h4>表单总数</h4><strong>{{ reportCenter.overview?.formCount || 0 }}</strong></div>
         <div class="metric-card"><h4>已归档</h4><strong>{{ reportCenter.overview?.archivedCount || 0 }}</strong></div>
         <div class="metric-card"><h4>待归档</h4><strong>{{ reportCenter.overview?.pendingArchiveCount || 0 }}</strong></div>
-        <div class="metric-card"><h4>已确认评价</h4><strong>{{ reportCenter.overview?.confirmedEvaluationCount || 0 }}</strong></div>
+        <div class="metric-card"><h4>已审批评价</h4><strong>{{ reportCenter.overview?.confirmedEvaluationCount || 0 }}</strong></div>
         <div class="metric-card"><h4>平均成绩</h4><strong>{{ reportCenter.overview?.averageScore || 0 }}</strong></div>
       </div>
       <div class="dual-grid">
@@ -1228,12 +1585,17 @@ watch(messageReadFilter, () => {
           </el-table>
         </div>
         <div class="panel-card">
-          <div class="page-header"><h2 style="font-size: 20px">表单状态分布</h2><el-tag type="success">归档率 {{ reportCenter.overview?.archiveRate || 0 }}%</el-tag></div>
-          <el-table :data="reportCenter.forms?.statusDistribution || []" style="margin-top: 16px">
-            <el-table-column prop="label" label="状态" />
-            <el-table-column prop="count" label="数量" width="100" />
-            <template #empty><el-empty description="暂无表单状态统计" /></template>
-          </el-table>
+          <div class="page-header"><h2 style="font-size: 20px">评价汇总</h2><el-tag type="success">待审批 {{ reportCenter.evaluations?.summary?.pending || 0 }}</el-tag></div>
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="评价总数">{{ reportCenter.evaluations?.summary?.total || 0 }}</el-descriptions-item>
+            <el-descriptions-item label="已审批">{{ reportCenter.evaluations?.summary?.confirmed || 0 }}</el-descriptions-item>
+            <el-descriptions-item label="待审批">{{ reportCenter.evaluations?.summary?.pending || 0 }}</el-descriptions-item>
+            <el-descriptions-item label="已退回">{{ reportCenter.evaluations?.summary?.returned || 0 }}</el-descriptions-item>
+            <el-descriptions-item label="平均成绩">{{ reportCenter.evaluations?.summary?.averageScore || 0 }}</el-descriptions-item>
+          </el-descriptions>
+          <el-space wrap style="margin-top: 16px">
+            <el-tag v-for="item in reportCenter.evaluations?.scoreDistribution || []" :key="item.label" type="success">{{ item.label }} {{ item.count }}</el-tag>
+          </el-space>
         </div>
       </div>
       <div class="dual-grid">
@@ -1264,36 +1626,15 @@ watch(messageReadFilter, () => {
       </div>
       <div class="dual-grid">
         <div class="panel-card">
-          <div class="page-header"><h2 style="font-size: 20px">评价汇总</h2><el-tag type="success">待确认 {{ reportCenter.evaluations?.summary?.pending || 0 }}</el-tag></div>
-          <el-descriptions :column="2" border>
-            <el-descriptions-item label="评价总数">{{ reportCenter.evaluations?.summary?.total || 0 }}</el-descriptions-item>
-            <el-descriptions-item label="已确认">{{ reportCenter.evaluations?.summary?.confirmed || 0 }}</el-descriptions-item>
-            <el-descriptions-item label="待确认">{{ reportCenter.evaluations?.summary?.pending || 0 }}</el-descriptions-item>
-            <el-descriptions-item label="平均成绩">{{ reportCenter.evaluations?.summary?.averageScore || 0 }}</el-descriptions-item>
-          </el-descriptions>
-          <el-space wrap style="margin-top: 16px">
-            <el-tag v-for="item in reportCenter.evaluations?.scoreDistribution || []" :key="item.label" type="success">{{ item.label }} {{ item.count }}</el-tag>
-          </el-space>
-        </div>
-        <div class="panel-card">
-          <div class="page-header"><h2 style="font-size: 20px">单位使用情况</h2><el-tag>{{ reportCenter.organizations?.usageRanking?.length || 0 }} 项</el-tag></div>
-          <el-table :data="reportCenter.organizations?.usageRanking || []" style="margin-top: 16px">
-            <el-table-column prop="organizationName" label="实习单位" min-width="180" />
-            <el-table-column prop="cooperationStatus" label="合作状态" min-width="120" />
-            <el-table-column prop="count" label="使用次数" width="100" />
-            <template #empty><el-empty description="暂无单位使用统计" /></template>
+          <div class="page-header"><h2 style="font-size: 20px">月度趋势</h2><el-tag type="warning">提交 / 归档 / 评价</el-tag></div>
+          <el-table :data="reportCenter.trends || []" style="margin-top: 16px">
+            <el-table-column prop="month" label="月份" width="120" />
+            <el-table-column prop="submitted" label="提交数" width="120" />
+            <el-table-column prop="archived" label="归档数" width="120" />
+            <el-table-column prop="evaluated" label="评价数" width="120" />
+            <template #empty><el-empty description="暂无月度趋势数据" /></template>
           </el-table>
         </div>
-      </div>
-      <div class="panel-card">
-        <div class="page-header"><h2 style="font-size: 20px">月度趋势</h2><el-tag type="warning">提交 / 归档 / 评价</el-tag></div>
-        <el-table :data="reportCenter.trends || []" style="margin-top: 16px">
-          <el-table-column prop="month" label="月份" width="120" />
-          <el-table-column prop="submitted" label="提交数" width="120" />
-          <el-table-column prop="archived" label="归档数" width="120" />
-          <el-table-column prop="evaluated" label="评价数" width="120" />
-          <template #empty><el-empty description="暂无月度趋势数据" /></template>
-        </el-table>
       </div>
     </template>
 
@@ -1325,7 +1666,7 @@ watch(messageReadFilter, () => {
         </div>
         <el-tag type="warning">未读 {{ unreadCollegeMessages.length }} 条</el-tag>
       </div>
-      <FilterTablePanel v-model:keyword="messageKeyword" v-model:current-page="messagePage" placeholder="筛选类型、标题、内容" :total="filteredMessages.length" :page-size="pageSize">
+      <FilterTablePanel v-model:keyword="messageKeyword" v-model:current-page="messagePage" placeholder="筛选类型、标题、内容" :total="filteredMessages.length" :page-size="messagePageSize">
         <template #toolbar-extra>
           <el-select v-model="messageReadFilter" style="width: 140px">
             <el-option v-for="option in messageReadOptions" :key="option.value" :label="option.label" :value="option.value" />

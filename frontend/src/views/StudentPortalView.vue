@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage } from "element-plus/es/components/message/index";
@@ -73,6 +73,20 @@ const filteredMessageSource = computed(() => {
 });
 const selectedTemplate = computed(() => templates.value.find((item) => item.code === formModel.templateCode) || null);
 const hasEffectiveMentor = computed(() => mentorApplications.value.some((item) => item.status === "已生效"));
+const hasApprovedInternship = computed(() => dashboard.value?.internshipStatus === "实习中" || internshipApplications.value.some((item) => item.status === "已通过"));
+const canCreateForm = computed(() => hasEffectiveMentor.value && hasApprovedInternship.value);
+const formCreationHint = computed(() => {
+  if (!hasEffectiveMentor.value && !hasApprovedInternship.value) {
+    return "请先完成指导关系生效和实习申请审批通过后再新建表单。";
+  }
+  if (!hasEffectiveMentor.value) {
+    return "请先完成指导关系生效后再新建表单。";
+  }
+  if (!hasApprovedInternship.value) {
+    return "请先完成实习申请审批通过后再新建表单。";
+  }
+  return "";
+});
 const editableFormStatuses = ["草稿", "教师退回", "学院退回"];
 const templateFields = computed(() => {
   if (selectedTemplate.value?.fieldSchema?.length) {
@@ -201,6 +215,15 @@ function syncFormContent(schema, source = {}) {
 
 function handleTemplateChange() {
   syncFormContent(templateFields.value);
+}
+
+function openFormDialog() {
+  if (!canCreateForm.value) {
+    ElMessage.warning(formCreationHint.value || "请先完成前置条件");
+    return;
+  }
+  resetFormModel();
+  formDialogVisible.value = true;
 }
 
 function formatFileSize(size) {
@@ -355,6 +378,10 @@ async function submitForm() {
     ElMessage.warning("请先选择表单模板");
     return;
   }
+  if (!canCreateForm.value) {
+    ElMessage.warning(formCreationHint.value || "请先完成前置条件");
+    return;
+  }
 
   for (const field of templateFields.value) {
     const value = `${formModel.content[field.key] ?? ""}`.trim();
@@ -423,7 +450,10 @@ watch(messageReadFilter, () => {
       <div class="panel-card">
         <div class="page-header">
           <h2 style="font-size: 20px">最近表单</h2>
-          <el-button type="primary" color="#0f766e" @click="formDialogVisible = true; resetFormModel()">新建表单</el-button>
+          <div style="display: grid; gap: 6px; justify-items: end">
+            <el-button type="primary" color="#0f766e" :disabled="!canCreateForm" @click="openFormDialog">新建表单</el-button>
+            <span v-if="!canCreateForm" class="subtle">{{ formCreationHint }}</span>
+          </div>
         </div>
         <el-table :data="latestForms" style="margin-top: 16px">
           <el-table-column prop="templateName" label="模板名称" />
@@ -547,7 +577,10 @@ watch(messageReadFilter, () => {
           <h2>表单管理</h2>
           <div class="subtle">统一管理通用表单与实习过程表单，按业务流程逐级流转。</div>
         </div>
-        <el-button type="primary" color="#0f766e" @click="formDialogVisible = true; resetFormModel()">新建表单</el-button>
+        <div style="display: grid; gap: 6px; justify-items: end">
+            <el-button type="primary" color="#0f766e" :disabled="!canCreateForm" @click="openFormDialog">新建表单</el-button>
+            <span v-if="!canCreateForm" class="subtle">{{ formCreationHint }}</span>
+          </div>
       </div>
       <FilterTablePanel
         v-model:keyword="formKeyword"
@@ -565,6 +598,9 @@ watch(messageReadFilter, () => {
             </template>
           </el-table-column>
           <el-table-column prop="version" label="版本" width="90" />
+          <el-table-column label="表单得分" width="100">
+            <template #default="{ row }">{{ row.score ?? "未评分" }}</template>
+          </el-table-column>
           <el-table-column label="标题" min-width="180">
             <template #default="{ row }">{{ row.content?.title }}</template>
           </el-table-column>
@@ -717,14 +753,28 @@ watch(messageReadFilter, () => {
           </el-col>
         </el-row>
         <el-row :gutter="14">
-          <el-col :span="12">
+                    <el-col :span="12">
             <el-form-item label="开始日期">
-              <el-input v-model="internshipForm.startDate" placeholder="YYYY-MM-DD" />
+              <el-date-picker
+                v-model="internshipForm.startDate"
+                type="date"
+                format="YYYY-MM-DD"
+                value-format="YYYY-MM-DD"
+                placeholder="选择开始日期"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="结束日期">
-              <el-input v-model="internshipForm.endDate" placeholder="YYYY-MM-DD" />
+              <el-date-picker
+                v-model="internshipForm.endDate"
+                type="date"
+                format="YYYY-MM-DD"
+                value-format="YYYY-MM-DD"
+                placeholder="选择结束日期"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -824,4 +874,5 @@ watch(messageReadFilter, () => {
     </el-dialog>
   </div>
 </template>
+
 

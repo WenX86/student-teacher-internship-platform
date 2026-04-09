@@ -217,9 +217,44 @@ public final class Requests {
     }
 
     public record EvaluationCollegeConfirmRequest(
-            @NotNull(message = "学院最终成绩不能为空")
-            Integer collegeScore,
             String collegeComment
+    ) {
+    }
+
+    public record EvaluationCollegeReturnRequest(
+            String collegeComment
+    ) {
+    }
+
+    public record BatchEvaluationCollegeConfirmRequest(
+            @NotNull(message = "评价列表不能为空")
+            List<String> evaluationIds,
+            String collegeComment
+    ) {
+    }
+
+    public record BatchEvaluationCollegeReturnRequest(
+            @NotNull(message = "评价列表不能为空")
+            List<String> evaluationIds,
+            String collegeComment
+    ) {
+    }
+
+    public record CollegeCreateRequest(
+            @NotBlank(message = "学院名称不能为空")
+            String name,
+            String contactName,
+            String contactPhone,
+            String description
+    ) {
+    }
+
+    public record CollegeAdminCreateRequest(
+            @NotBlank(message = "学院不能为空")
+            String collegeId,
+            @NotBlank(message = "管理员姓名不能为空")
+            String name,
+            String account
     ) {
     }
 }

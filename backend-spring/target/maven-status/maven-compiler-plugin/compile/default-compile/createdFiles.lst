@@ -19,6 +19,8 @@ com\internship\platform\mapper\MessageNoticeMapper.class
 com\internship\platform\common\GlobalExceptionHandler.class
 com\internship\platform\dto\Requests$FormReviewRequest.class
 com\internship\platform\constant\FormStatus.class
+com\internship\platform\dto\Requests$BatchEvaluationCollegeConfirmRequest.class
+com\internship\platform\dto\Requests$EvaluationCollegeReturnRequest.class
 com\internship\platform\entity\OrganizationEntity.class
 com\internship\platform\dto\Requests$StatusToggleRequest.class
 com\internship\platform\mapper\MentorApplicationMapper.class
@@ -39,6 +41,7 @@ com\internship\platform\service\PhaseOneService$SettingOption.class
 com\internship\platform\entity\MentorApplicationEntity.class
 com\internship\platform\dto\Requests.class
 com\internship\platform\dto\Requests$SystemSettingSaveRequest.class
+com\internship\platform\dto\Requests$CollegeAdminCreateRequest.class
 com\internship\platform\dto\Requests$LoginRequest.class
 com\internship\platform\entity\GuidanceRecordEntity.class
 com\internship\platform\dto\Requests$GuidanceRecordCreateRequest.class
@@ -50,12 +53,14 @@ com\internship\platform\util\IdGenerator.class
 com\internship\platform\InternshipPlatformApplication.class
 com\internship\platform\controller\FileController.class
 com\internship\platform\util\PasswordUtils.class
+com\internship\platform\config\WebMvcConfig.class
 com\internship\platform\dto\Requests$InternshipReviewRequest.class
 com\internship\platform\mapper\AuditLogMapper.class
 com\internship\platform\dto\Requests$EvaluationSaveRequest.class
 com\internship\platform\dto\Requests$FormTemplateCreateRequest.class
 com\internship\platform\mapper\OrganizationMapper.class
 com\internship\platform\mapper\GuidanceRecordMapper.class
+com\internship\platform\dto\Requests$CollegeCreateRequest.class
 com\internship\platform\mapper\CollegeMapper.class
 com\internship\platform\service\PhaseOneService$3.class
 com\internship\platform\entity\UserAccountEntity.class
@@ -76,5 +81,7 @@ com\internship\platform\security\TokenAuthenticationFilter.class
 com\internship\platform\service\PhaseOneService.class
 com\internship\platform\service\PhaseOneService$2.class
 com\internship\platform\entity\TeacherEntity.class
+com\internship\platform\web\FormSubmissionGuardInterceptor.class
 com\internship\platform\constant\InternshipApplicationStatus.class
 com\internship\platform\constant\RoleType.class
+com\internship\platform\dto\Requests$BatchEvaluationCollegeReturnRequest.class

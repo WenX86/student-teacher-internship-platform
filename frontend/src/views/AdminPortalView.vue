@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage } from "element-plus/es/components/message/index";
@@ -21,20 +21,33 @@ const section = computed(() => route.meta.section || "dashboard");
 const reviewDialog = ref(false);
 const reviewResultDialog = ref(false);
 const templateDialog = ref(false);
+const collegeDialog = ref(false);
+const collegeAdminDialog = ref(false);
 const settingsSaving = ref(false);
 const templateMode = ref("create");
 const currentRow = ref(null);
 const reviewForm = reactive({ approved: true, comment: "" });
 const reviewResult = ref(null);
 const templateForm = reactive(createEmptyTemplateForm());
+const collegeForm = reactive({
+  name: "",
+  contactName: "",
+  contactPhone: "",
+  description: "",
+});
+const collegeAdminForm = reactive({
+  collegeId: "",
+  name: "",
+  account: "",
+});
 const settingsForm = reactive({});
 
 const pageSize = 6;
 const applicationStatus = ref("ALL");
 const applicationStatusOptions = [
   { label: "全部状态", value: "ALL" },
-  { label: "只看待审核", value: "待审核" },
-  { label: "只看已通过", value: "已通过" },
+  { label: "只看待开通", value: "待审核" },
+  { label: "只看已开通", value: "已通过" },
   { label: "只看已驳回", value: "已驳回" },
 ];
 const applicationSource = computed(() => {
@@ -44,6 +57,19 @@ const applicationSource = computed(() => {
   return collegeApplications.value.filter((item) => item.status === applicationStatus.value);
 });
 
+function getCollegeRecordStatusMeta(status) {
+  if (status === "待审核") {
+    return { label: "待开通", type: "warning" };
+  }
+  if (status === "已通过") {
+    return { label: "已开通", type: "success" };
+  }
+  if (status === "已驳回") {
+    return { label: "已驳回", type: "danger" };
+  }
+  return { label: status || "-", type: "info" };
+}
+
 const {
   keyword: applicationKeyword,
   currentPage: applicationPage,
@@ -51,7 +77,7 @@ const {
   pagedItems: pagedCollegeApplications,
 } = useFilteredPagination({
   source: applicationSource,
-  matcher: (item) => [item.schoolName, item.collegeName, item.contactName, item.contactPhone, item.status],
+  matcher: (item) => [item.collegeName, item.contactName, item.contactPhone, item.status],
   pageSize,
 });
 
@@ -81,6 +107,84 @@ const enabledTemplateCount = computed(() => formTemplates.value.filter((item) =>
 const disabledTemplateCount = computed(() => formTemplates.value.filter((item) => !item.enabled).length);
 const reminderSettings = computed(() => systemSettings.value.filter((item) => item.category === "REMINDER"));
 const enabledReminderCount = computed(() => reminderSettings.value.filter((item) => item.valueType === "BOOLEAN" && settingsForm[item.key] === true).length);
+const availableCollegesForAdmin = computed(() => {
+  const existingCollegeIds = new Set(collegeAdmins.value.map((item) => item.collegeId).filter(Boolean));
+  return (basicData.value.colleges || []).filter((item) => !existingCollegeIds.has(item.id));
+});
+
+const collegeTotalCount = computed(() => basicData.value.colleges?.length || 0);
+const missingCollegeCount = computed(() => Math.max(collegeTotalCount.value - collegeAdmins.value.length, 0));
+const incompleteCollegeCount = computed(() => (basicData.value.colleges || []).filter((item) => !item.contactName || !item.contactPhone).length);
+const activeCollegeAdminCount = computed(() => collegeAdmins.value.filter((item) => item.status === "ACTIVE").length);
+const disabledCollegeAdminCount = computed(() => collegeAdmins.value.filter((item) => item.status !== "ACTIVE").length);
+const dashboardTodoItems = computed(() => [
+  {
+    label: "待录入学院",
+    value: missingCollegeCount.value,
+    hint: "学院已建但尚未创建管理员账号。",
+  },
+  {
+    label: "待完善学院信息",
+    value: incompleteCollegeCount.value,
+    hint: "联系人或联系电话缺失，建议补齐。",
+  },
+  {
+    label: "待处理消息",
+    value: dashboard.value.unreadMessages || 0,
+    hint: "消息中心中尚未查看的提醒。",
+  },
+  {
+    label: "停用账号",
+    value: disabledCollegeAdminCount.value,
+    hint: "处于停用状态的学院管理员账号。",
+  },
+]);
+const recentActivities = computed(() =>
+  [...logs.value]
+    .slice()
+    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+    .slice(0, 5)
+    .map((item) => ({
+      title: item.action || item.type || "系统动态",
+      meta: [item.detail, item.operatorId].filter(Boolean).join(" · ") || "系统记录",
+      time: formatShortTime(item.createdAt),
+    }))
+);
+const collegeStatusSegments = computed(() => {
+  const segments = [
+    { label: "已录入学院", count: collegeAdmins.value.length, color: "#0f766e" },
+    { label: "待录入学院", count: missingCollegeCount.value, color: "#f59e0b" },
+  ];
+  const total = segments.reduce((sum, item) => sum + item.count, 0);
+  return segments.map((item) => ({
+    ...item,
+    percent: total > 0 ? (item.count / total) * 100 : 0,
+  }));
+});
+
+const collegeCoverageRate = computed(() => {
+  if (!collegeTotalCount.value) {
+    return 0;
+  }
+  return Math.round((collegeAdmins.value.length / collegeTotalCount.value) * 100);
+});
+const pendingCollegePreview = computed(() =>
+  (basicData.value.colleges || [])
+    .filter((item) => !collegeAdmins.value.some((admin) => admin.collegeId === item.id))
+    .slice(0, 3)
+    .map((item) => ({
+      name: item.name,
+      contact: item.contactName || '未填写联系人',
+      phone: item.contactPhone || '未填写电话',
+    }))
+);
+function formatShortTime(value) {
+  if (!value) {
+    return "-";
+  }
+  const text = String(value).replace("T", " ").replace(/\.\d+$/, "");
+  return text.length > 19 ? text.slice(0, 19) : text;
+}
 
 function createDefaultFields() {
   return [
@@ -163,17 +267,18 @@ function openReview(row) {
 async function submitReview() {
   try {
     reviewResult.value = await post(`/admin/college-applications/${currentRow.value.id}/review`, reviewForm);
-    ElMessage.success("学院入驻申请已处理。");
+    applicationStatus.value = reviewResult.value?.status || "ALL";
+    ElMessage.success(`学院账号开通记录已处理，状态已更新为${getCollegeRecordStatusMeta(reviewResult.value?.status || "").label || "最新状态"}。`);
     reviewDialog.value = false;
-    reviewResultDialog.value = true;
     await loadAll();
+    reviewResultDialog.value = true;
   } catch (error) {
     ElMessage.error(error.message);
   }
 }
 
 function findCollegeAdminForApplication(row) {
-  return collegeAdmins.value.find((item) => item.schoolName === row.schoolName && item.collegeName === row.collegeName) || null;
+  return collegeAdmins.value.find((item) => item.collegeName === row.collegeName) || null;
 }
 
 function reviewCreatedNewCollegeAdmin(row) {
@@ -184,10 +289,38 @@ function reviewHasCollegeAdmin(row) {
   return String(row.reviewComment || "").includes("学院管理员账号：");
 }
 
+function resetCollegeForm() {
+  collegeForm.name = "";
+  collegeForm.contactName = "";
+  collegeForm.contactPhone = "";
+  collegeForm.description = "";
+}
+
+function openCreateCollege() {
+  resetCollegeForm();
+  collegeDialog.value = true;
+}
+
 function openCreateTemplate() {
   templateMode.value = "create";
   resetTemplateForm();
   templateDialog.value = true;
+}
+
+function resetCollegeAdminForm() {
+  collegeAdminForm.collegeId = "";
+  collegeAdminForm.name = "";
+  collegeAdminForm.account = "";
+}
+
+function openCreateCollegeAdmin() {
+  if (!availableCollegesForAdmin.value.length) {
+    ElMessage.warning("当前学院都已存在管理员账号；如果是新学院，请先新增学院基础信息后再创建学院管理员账号。");
+    return;
+  }
+  resetCollegeAdminForm();
+  collegeAdminForm.collegeId = availableCollegesForAdmin.value[0].id;
+  collegeAdminDialog.value = true;
 }
 
 function openEditTemplate(row) {
@@ -354,6 +487,53 @@ async function resetCollegeAdminPassword(row) {
     ElMessage.error(error.message || "重置密码失败");
   }
 }
+
+async function createCollege() {
+  if (!collegeForm.name.trim()) {
+    ElMessage.warning("请输入学院名称。");
+    return;
+  }
+
+  try {
+    const result = await post("/admin/colleges", {
+      name: collegeForm.name.trim(),
+      contactName: collegeForm.contactName.trim(),
+      contactPhone: collegeForm.contactPhone.trim(),
+      description: collegeForm.description.trim(),
+    });
+    collegeDialog.value = false;
+    resetCollegeForm();
+    ElMessage.success(`学院已新增：${result.name}。现在可以继续为该学院创建管理员账号。`);
+    await loadAll();
+  } catch (error) {
+    ElMessage.error(error.message);
+  }
+}
+
+async function createCollegeAdmin() {
+  if (!collegeAdminForm.collegeId) {
+    ElMessage.warning("请选择所属学院。");
+    return;
+  }
+  if (!collegeAdminForm.name.trim()) {
+    ElMessage.warning("请输入管理员姓名。");
+    return;
+  }
+
+  try {
+    const result = await post("/admin/college-admins", {
+      collegeId: collegeAdminForm.collegeId,
+      name: collegeAdminForm.name.trim(),
+      account: collegeAdminForm.account.trim(),
+    });
+    collegeAdminDialog.value = false;
+    resetCollegeAdminForm();
+    ElMessage.success(`学院管理员账号已创建：${result.account}，初始密码为 123456。`);
+    await loadAll();
+  } catch (error) {
+    ElMessage.error(error.message);
+  }
+}
 onMounted(loadAll);
 watch(() => route.path, loadAll);
 watch(applicationStatus, () => {
@@ -366,96 +546,109 @@ watch(applicationStatus, () => {
     <template v-if="section === 'dashboard'">
       <div class="page-header">
         <div>
-          <h2>平台入驻审核</h2>
-          <div class="subtle">超级管理员负责学院入驻审批、全局启用情况监控和一期平台治理总览。</div>
+          <h2>学院管理员总览</h2>
+          <div class="subtle">超级管理员作为学校总教秘，负责本校各学院管理员账号的统一录入、开通状态管理与平台治理；账号创建完成后，状态会显示为已开通。</div>
         </div>
       </div>
       <div class="metric-grid">
         <div class="metric-card"><h4>活跃用户</h4><strong>{{ dashboard.activeUsers || 0 }}</strong></div>
-        <div class="metric-card"><h4>学院申请数</h4><strong>{{ dashboard.collegeApplicationCount || 0 }}</strong></div>
-        <div class="metric-card"><h4>待审核申请</h4><strong>{{ dashboard.pendingCollegeApplicationCount || 0 }}</strong></div>
+        <div class="metric-card"><h4>学院总数</h4><strong>{{ basicData.colleges?.length || 0 }}</strong></div>
+        <div class="metric-card"><h4>待录入学院数</h4><strong>{{ Math.max((basicData.colleges?.length || 0) - collegeAdmins.length, 0) }}</strong></div>
         <div class="metric-card"><h4>全局表单数</h4><strong>{{ dashboard.totalForms || 0 }}</strong></div>
         <div class="metric-card"><h4>未读消息</h4><strong>{{ dashboard.unreadMessages || 0 }}</strong></div>
       </div>
-      <FilterTablePanel
-        v-model:keyword="applicationKeyword"
-        v-model:current-page="applicationPage"
-        placeholder="筛选学校、学院、联系人、状态"
-        input-width="340px"
-        :total="filteredCollegeApplications.length"
-        :page-size="pageSize"
-      >
-        <template #toolbar-extra>
-          <el-select v-model="applicationStatus" style="width: 180px">
-            <el-option v-for="option in applicationStatusOptions" :key="option.value" :label="option.label" :value="option.value" />
-          </el-select>
-        </template>
-        <el-table :data="pagedCollegeApplications">
-          <el-table-column type="expand" width="54">
-            <template #default="{ row }">
-              <el-descriptions :column="2" border>
-                <el-descriptions-item label="申请说明" :span="2">{{ row.description || "未填写" }}</el-descriptions-item>
-                <el-descriptions-item label="审核意见" :span="2">{{ row.reviewComment || "暂无审核意见" }}</el-descriptions-item>
-                <el-descriptions-item label="账号处理结果" :span="2">
-                  {{ row.status === "已通过" ? (reviewCreatedNewCollegeAdmin(row) ? "审核通过时已自动创建学院管理员账号" : (reviewHasCollegeAdmin(row) ? "审核通过时已关联现有学院管理员账号" : "审核通过，但未识别到关联账号信息")) : "当前审核状态下未生成学院管理员账号" }}
-                </el-descriptions-item>
-                <el-descriptions-item label="学院管理员账号">
-                  <template v-if="findCollegeAdminForApplication(row)">
-                    <el-tag type="success">{{ findCollegeAdminForApplication(row).account }}</el-tag>
-                  </template>
-                  <span v-else>暂无</span>
-                </el-descriptions-item>
-                <el-descriptions-item label="管理员姓名">
-                  {{ findCollegeAdminForApplication(row)?.name || "暂无" }}
-                </el-descriptions-item>
-                <el-descriptions-item label="账号状态">
-                  <template v-if="findCollegeAdminForApplication(row)">
-                    <el-tag :type="findCollegeAdminForApplication(row).status === 'ACTIVE' ? 'success' : 'info'">
-                      {{ findCollegeAdminForApplication(row).status === "ACTIVE" ? "启用" : "停用" }}
-                    </el-tag>
-                  </template>
-                  <span v-else>暂无</span>
-                </el-descriptions-item>
-                <el-descriptions-item label="首次登录策略">
-                  <template v-if="findCollegeAdminForApplication(row)">
-                    {{ findCollegeAdminForApplication(row).mustChangePassword ? "首次登录必须修改密码" : "允许直接进入系统" }}
-                  </template>
-                  <span v-else>暂无</span>
-                </el-descriptions-item>
-                <el-descriptions-item label="初始密码说明" :span="2">
-                  {{ reviewCreatedNewCollegeAdmin(row) ? "本次审核自动创建账号时的初始密码为 123456，请提醒学院联系人首次登录后立即修改。" : "当前记录未展示新的初始密码信息。" }}
-                </el-descriptions-item>
-              </el-descriptions>
-            </template>
-          </el-table-column>
-          <el-table-column prop="schoolName" label="学校" min-width="180" />
-          <el-table-column prop="collegeName" label="学院" min-width="180" />
-          <el-table-column prop="contactName" label="联系人" width="110" />
-          <el-table-column prop="contactPhone" label="联系电话" width="140" />
-          <el-table-column prop="status" label="状态" width="120" />
-          <el-table-column prop="createdAt" label="申请时间" width="180" />
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openReview(row)">审核</el-button>
-            </template>
-          </el-table-column>
-          <template #empty><el-empty description="暂无学院入驻申请" /></template>
-        </el-table>
-      </FilterTablePanel>
+      <div class="dashboard-board" style="margin-top: 18px">
+        <div class="panel-card dashboard-panel dashboard-panel-todo">
+          <div class="page-header dashboard-panel-header">
+            <div>
+              <h2 style="font-size: 20px">待办概览</h2>
+              <div class="subtle">集中列出当前最需要处理的事项，帮助超级管理员快速安排录入节奏。</div>
+            </div>
+          </div>
+          <div class="dashboard-todo-grid">
+            <div v-for="item in dashboardTodoItems" :key="item.label" class="dashboard-todo-item">
+              <div class="dashboard-todo-value">{{ item.value }}</div>
+              <div class="dashboard-todo-label">{{ item.label }}</div>
+              <div class="dashboard-todo-hint">{{ item.hint }}</div>
+            </div>
+          </div>
+          <div class="dashboard-preview-section">
+            <div class="dashboard-section-title">待录入学院预览</div>
+            <div class="dashboard-preview-list">
+              <div v-for="item in pendingCollegePreview" :key="item.name" class="dashboard-preview-item">
+                <div>
+                  <div class="dashboard-preview-title">{{ item.name }}</div>
+                  <div class="dashboard-preview-meta">{{ item.contact }} · {{ item.phone }}</div>
+                </div>
+              </div>
+              <div v-if="!pendingCollegePreview.length" class="dashboard-recent-empty">当前学院都已录入管理员账号</div>
+            </div>
+          </div>
+        </div>
+        <div class="panel-card dashboard-panel dashboard-panel-status">
+          <div class="page-header dashboard-panel-header">
+            <div>
+              <h2 style="font-size: 20px">学院状态分布</h2>
+              <div class="subtle">通过总量、已录入与待录入的关系，快速判断当前账号补录压力。</div>
+            </div>
+            <el-tag type="info">{{ collegeTotalCount }}</el-tag>
+          </div>
+          <div class="dashboard-mini-chart">
+            <div class="dashboard-mini-bar dashboard-mini-bar-large">
+              <div
+                v-for="segment in collegeStatusSegments"
+                :key="segment.label"
+                class="dashboard-mini-segment"
+                :style="{ width: `${segment.percent}%`, background: segment.color }"
+              ></div>
+            </div>
+            <div class="dashboard-mini-legend">
+              <div v-for="segment in collegeStatusSegments" :key="segment.label" class="dashboard-mini-legend-item">
+                <span class="dashboard-mini-dot" :style="{ background: segment.color }"></span>
+                <span class="dashboard-mini-legend-label">{{ segment.label }}</span>
+                <span class="dashboard-mini-legend-count">{{ segment.count }} 个</span>
+              </div>
+            </div>
+            <div class="dashboard-mini-foot">学院覆盖率 {{ collegeCoverageRate }}%，已录入账号 {{ collegeAdmins.length }} 个，启用账号 {{ activeCollegeAdminCount }} 个，停用账号 {{ disabledCollegeAdminCount }} 个。</div>
+          </div>
+        </div>
+        <div class="panel-card dashboard-panel dashboard-panel-recent">
+          <div class="page-header dashboard-panel-header">
+            <div>
+              <h2 style="font-size: 20px">最近动态</h2>
+              <div class="subtle">展示最近的关键操作，方便追踪平台侧的录入和维护记录。</div>
+            </div>
+            <el-tag type="success">{{ recentActivities.length }} 条</el-tag>
+          </div>
+          <div class="dashboard-recent-list dashboard-recent-list-wide">
+            <div v-for="item in recentActivities" :key="`${item.time}-${item.title}`" class="dashboard-recent-item">
+              <div>
+                <div class="dashboard-recent-title">{{ item.title }}</div>
+                <div class="dashboard-recent-meta">{{ item.meta }}</div>
+              </div>
+              <div class="dashboard-recent-time">{{ item.time }}</div>
+            </div>
+            <div v-if="!recentActivities.length" class="dashboard-recent-empty">暂无最近动态</div>
+          </div>
+        </div>
+      </div>
     </template>
 
     <template v-else-if="section === 'basic'">
       <div class="page-header">
         <div>
-          <h2>基础数据快照</h2>
-          <div class="subtle">展示平台侧学院、角色和表单状态等全局基础配置，便于核查一期主数据。</div>
+          <h2>学院申请</h2>
+          <div class="subtle">展示学院申请与学院管理员账号等基础信息；如需为尚未录入的学院直接创建管理员账号，可先新增学院基础信息，再创建学院管理员账号。</div>
         </div>
       </div>
       <div class="dual-grid">
         <div class="panel-card">
-          <div class="page-header"><h2 style="font-size: 20px">学院列表</h2><el-tag>{{ basicData.colleges?.length || 0 }}</el-tag></div>
-          <el-table :data="basicData.colleges || []">
-            <el-table-column prop="schoolName" label="学校" min-width="180" />
+          <div class="page-header">
+            <h2 style="font-size: 20px">学院列表</h2>
+            <el-tag>{{ basicData.colleges?.length || 0 }}</el-tag>
+            <el-button type="primary" color="#0f766e" plain @click="openCreateCollege">新增学院</el-button>
+          </div>
+          <el-table :data="basicData.colleges || []" max-height="280">
             <el-table-column prop="name" label="学院" min-width="160" />
             <el-table-column prop="contactName" label="联系人" width="110" />
             <el-table-column prop="contactPhone" label="联系电话" width="140" />
@@ -474,9 +667,9 @@ watch(applicationStatus, () => {
         <div class="page-header">
           <h2 style="font-size: 20px">学院管理员账号</h2>
           <el-tag>{{ collegeAdmins.length }}</el-tag>
+          <el-button type="primary" color="#0f766e" plain @click="openCreateCollegeAdmin">新增学院管理员</el-button>
         </div>
         <el-table :data="collegeAdmins">
-          <el-table-column prop="schoolName" label="学校" min-width="160" />
           <el-table-column prop="collegeName" label="学院" min-width="150" />
           <el-table-column prop="name" label="管理员" width="120" />
           <el-table-column prop="account" label="账号" width="140" />
@@ -637,29 +830,28 @@ watch(applicationStatus, () => {
       </FilterTablePanel>
     </template>
 
-    <el-dialog v-model="reviewDialog" title="审核学院入驻申请" width="520px">
+    <el-dialog v-model="reviewDialog" title="处理学院账号开通记录" width="520px">
       <el-form label-position="top">
-        <el-form-item label="审核结论"><el-switch v-model="reviewForm.approved" inline-prompt active-text="通过" inactive-text="驳回" /></el-form-item>
-        <el-form-item label="审核意见"><el-input v-model="reviewForm.comment" type="textarea" :rows="4" /></el-form-item>
+        <el-form-item label="处理结论"><el-switch v-model="reviewForm.approved" inline-prompt active-text="开通" inactive-text="驳回" /></el-form-item>
+        <el-form-item label="处理备注"><el-input v-model="reviewForm.comment" type="textarea" :rows="4" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="reviewDialog = false">取消</el-button>
-        <el-button type="primary" color="#0f766e" @click="submitReview">提交审核</el-button>
+        <el-button type="primary" color="#0f766e" @click="submitReview">提交处理</el-button>
       </template>
     </el-dialog>
-    <el-dialog v-model="reviewResultDialog" title="审核结果" width="560px">
+    <el-dialog v-model="reviewResultDialog" title="处理结果" width="560px">
       <el-alert
-        :title="reviewResult && reviewResult.approved ? '学院入驻审核已通过' : '学院入驻审核已驳回'"
+        :title="reviewResult && reviewResult.approved ? '学院账号已开通' : '学院账号未开通'"
         :type="reviewResult && reviewResult.approved ? 'success' : 'warning'"
         :closable="false"
         show-icon
       />
       <el-descriptions v-if="reviewResult" :column="1" border style="margin-top: 16px">
-        <el-descriptions-item label="学校">{{ reviewResult.schoolName }}</el-descriptions-item>
         <el-descriptions-item label="学院">{{ reviewResult.collegeName }}</el-descriptions-item>
-        <el-descriptions-item label="审核状态">{{ reviewResult.status }}</el-descriptions-item>
-        <el-descriptions-item label="审核意见">{{ reviewResult.reviewComment || '无' }}</el-descriptions-item>
-        <el-descriptions-item v-if="reviewResult.approved" label="账号处理结果">
+        <el-descriptions-item label="处理状态">{{ getCollegeRecordStatusMeta(reviewResult.status).label }}</el-descriptions-item>
+        <el-descriptions-item label="处理备注">{{ reviewResult.reviewComment || '无' }}</el-descriptions-item>
+        <el-descriptions-item v-if="reviewResult.approved" label="账号开通结果">
           {{ reviewResult.generatedCollegeAdmin ? '已自动创建学院管理员账号' : '已关联现有学院管理员账号' }}
         </el-descriptions-item>
         <el-descriptions-item v-if="reviewResult.approved" label="学院管理员账号">
@@ -676,10 +868,58 @@ watch(applicationStatus, () => {
         </el-descriptions-item>
       </el-descriptions>
       <div v-if="reviewResult && reviewResult.approved" class="subtle" style="margin-top: 14px">
-        建议审核通过后立即将账号信息通知学院联系人，并提醒其首次登录后尽快修改密码。
+        处理完成后，记录状态已自动切换为“已开通”；建议立即将账号信息通知学院联系人，并提醒其首次登录后尽快修改密码。
       </div>
       <template #footer>
         <el-button type="primary" color="#0f766e" @click="reviewResultDialog = false">我知道了</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="collegeDialog" title="新增学院" width="520px">
+      <el-form label-position="top">
+        <el-form-item label="学院名称">
+          <el-input v-model="collegeForm.name" placeholder="请输入学院名称" />
+        </el-form-item>
+        <el-form-item label="联系人">
+          <el-input v-model="collegeForm.contactName" placeholder="可选，便于后续管理员录入" />
+        </el-form-item>
+        <el-form-item label="联系电话">
+          <el-input v-model="collegeForm.contactPhone" placeholder="可选，便于后续联系" />
+        </el-form-item>
+        <el-form-item label="说明">
+          <el-input v-model="collegeForm.description" type="textarea" :rows="3" placeholder="可选，记录学院基础信息或备注" />
+        </el-form-item>
+        <div class="subtle">新增学院后，可继续在下方“学院管理员账号”区域为该学院创建管理员账号。</div>
+      </el-form>
+      <template #footer>
+        <el-button @click="collegeDialog = false">取消</el-button>
+        <el-button type="primary" color="#0f766e" @click="createCollege">确认新增</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="collegeAdminDialog" title="新增学院管理员" width="520px">
+      <el-form label-position="top">
+        <el-form-item label="所属学院">
+          <el-select v-model="collegeAdminForm.collegeId" style="width: 100%" placeholder="请选择学院">
+            <el-option
+              v-for="item in availableCollegesForAdmin"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="管理员姓名">
+          <el-input v-model="collegeAdminForm.name" placeholder="请输入管理员姓名" />
+        </el-form-item>
+        <el-form-item label="登录账号">
+          <el-input v-model="collegeAdminForm.account" placeholder="可选，不填则系统自动生成" />
+        </el-form-item>
+        <div class="subtle">初始密码默认为 123456，创建后将要求首次登录修改密码。</div>
+      </el-form>
+      <template #footer>
+        <el-button @click="collegeAdminDialog = false">取消</el-button>
+        <el-button type="primary" color="#0f766e" @click="createCollegeAdmin">确认创建</el-button>
       </template>
     </el-dialog>
 
@@ -781,3 +1021,14 @@ watch(applicationStatus, () => {
     </el-dialog>
   </div>
 </template>
+
+
+
+
+
+
+
+
+
+
+

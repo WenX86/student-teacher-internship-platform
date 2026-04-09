@@ -35,33 +35,13 @@
 
  :: Spring Boot ::                (v3.3.5)
 
-2026-03-29T01:15:08.561+08:00  INFO 29820 --- [internship-platform-backend] [           main] c.i.p.InternshipPlatformApplication      : Starting InternshipPlatformApplication using Java 21.0.8 with PID 29820 (C:\Users\32468\AppData\Local\Temp\internship-platform-backend-spring\target\classes started by 32468 in C:\Users\32468\AppData\Local\Temp\internship-platform-backend-spring)
-2026-03-29T01:15:08.562+08:00  INFO 29820 --- [internship-platform-backend] [           main] c.i.p.InternshipPlatformApplication      : No active profile set, falling back to 1 default profile: "default"
-2026-03-29T01:15:09.915+08:00  INFO 29820 --- [internship-platform-backend] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 8080 (http)
-2026-03-29T01:15:09.930+08:00  INFO 29820 --- [internship-platform-backend] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
-2026-03-29T01:15:09.930+08:00  INFO 29820 --- [internship-platform-backend] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.31]
-2026-03-29T01:15:10.026+08:00  INFO 29820 --- [internship-platform-backend] [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
-2026-03-29T01:15:10.026+08:00  INFO 29820 --- [internship-platform-backend] [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 1419 ms
-2026-03-29T01:15:10.042+08:00  INFO 29820 --- [internship-platform-backend] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
-2026-03-29T01:15:10.267+08:00  INFO 29820 --- [internship-platform-backend] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection conn0: url=jdbc:h2:mem:internship_platform user=SA
-2026-03-29T01:15:10.282+08:00  INFO 29820 --- [internship-platform-backend] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
-2026-03-29T01:15:10.290+08:00  INFO 29820 --- [internship-platform-backend] [           main] o.s.b.a.h2.H2ConsoleAutoConfiguration    : H2 console available at '/h2-console'. Database available at 'jdbc:h2:mem:internship_platform'
- _ _   |_  _ _|_. ___ _ |    _ 
+2026-04-08 20:20:29 [main] INFO  c.i.p.InternshipPlatformApplication - Starting InternshipPlatformApplication using Java 21.0.8 with PID 18540 (C:\Users\32468\AppData\Local\Temp\internship-platform-backend-spring\target\classes started by 32468 in C:\Users\32468\AppData\Local\Temp\internship-platform-backend-spring).replace('password=','password=***'2026-04-08 20:20:29 [main] INFO  c.i.p.InternshipPlatformApplication - No active profile set, falling back to 1 default profile: "default".replace('password=','password=***'2026-04-08 20:20:31 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http).replace('password=','password=***'2026-04-08 20:20:31 [main] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat].replace('password=','password=***'2026-04-08 20:20:31 [main] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.31].replace('password=','password=***'2026-04-08 20:20:31 [main] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext.replace('password=','password=***'2026-04-08 20:20:31 [main] INFO  o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 1725 ms.replace('password=','password=***' _ _   |_  _ _|_. ___ _ |    _ 
 | | |\/|_)(_| | |_\  |_)||_|_\ 
      /               |         
                         3.5.8 
-2026-03-29T01:15:11.079+08:00  WARN 29820 --- [internship-platform-backend] [           main] .s.s.UserDetailsServiceAutoConfiguration : 
+2026-04-08 20:20:33 [main] INFO  o.s.s.c.a.a.c.InitializeUserDetailsBeanManagerConfigurer$InitializeUserDetailsManagerConfigurer - Global AuthenticationManager configured with UserDetailsService bean with name inMemoryUserDetailsManager.replace('password=','password=***'2026-04-08 20:20:33 [main] WARN  o.s.b.w.s.c.AnnotationConfigServletWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'.replace('password=','password=***'2026-04-08 20:20:33 [main] INFO  o.s.b.a.l.ConditionEvaluationReportLogger - 
 
-Using generated security password: 242c994d-412e-4798-a7ce-cf4fe1a0a707
-
-This generated password is for development use only. Your security configuration must be updated before running your application in production.
-
-2026-03-29T01:15:11.105+08:00  INFO 29820 --- [internship-platform-backend] [           main] r$InitializeUserDetailsManagerConfigurer : Global AuthenticationManager configured with UserDetailsService bean with name inMemoryUserDetailsManager
-2026-03-29T01:15:11.495+08:00  WARN 29820 --- [internship-platform-backend] [           main] ConfigServletWebServerApplicationContext : Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'
-2026-03-29T01:15:11.495+08:00  INFO 29820 --- [internship-platform-backend] [           main] com2026-03-29T01:15:42.640+08:00  INFO 18796 --- [internship-platform-backend] [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
-2026-03-29T01:15:42.640+08:00  INFO 18796 --- [internship-platform-backend] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
-2026-03-29T01:15:42.640+08:00  INFO 18796 --- [internship-platform-backend] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 0 ms
- ERROR 29820 --- [internship-platform-backend] [           main] o.s.b.d.LoggingFailureAnalysisReporter   : 
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled..replace('password=','password=***'2026-04-08 20:20:33 [main] ERROR o.s.b.d.LoggingFailureAnalysisReporter - 
 
 ***************************
 APPLICATION FAILED TO START
@@ -74,12 +54,11 @@ Web server failed to start. Port 8080 was already in use.
 Action:
 
 Identify and stop the process that's listening on port 8080 or configure this application to listen on another port.
-
-[INFO] ------------------------------------------------------------------------
+.replace('password=','password=***'[INFO] ------------------------------------------------------------------------
 [INFO] BUILD FAILURE
 [INFO] ------------------------------------------------------------------------
-[INFO] Total time:  6.625 s
-[INFO] Finished at: 2026-03-29T01:15:11+08:00
+[INFO] Total time:  8.407 s
+[INFO] Finished at: 2026-04-08T20:20:33+08:00
 [INFO] ------------------------------------------------------------------------
 [ERROR] Failed to execute goal org.springframework.boot:spring-boot-maven-plugin:3.3.5:run (default-cli) on project internship-platform-backend: Process terminated with exit code: 1 -> [Help 1]
 [ERROR] 

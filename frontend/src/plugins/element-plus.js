@@ -1,6 +1,8 @@
-import { ElButton } from "element-plus/es/components/button/index";
+﻿import { ElButton } from "element-plus/es/components/button/index";
+import { ElCheckbox } from "element-plus/es/components/checkbox/index";
 import { ElCol } from "element-plus/es/components/col/index";
 import { ElContainer, ElAside, ElHeader, ElMain } from "element-plus/es/components/container/index";
+import { ElConfigProvider } from "element-plus/es/components/config-provider/index";
 import { ElDatePicker } from "element-plus/es/components/date-picker/index";
 import { ElDescriptions, ElDescriptionsItem } from "element-plus/es/components/descriptions/index";
 import { ElDialog } from "element-plus/es/components/dialog/index";
@@ -21,8 +23,10 @@ import { ElTag } from "element-plus/es/components/tag/index";
 
 import "element-plus/es/components/aside/style/css";
 import "element-plus/es/components/button/style/css";
+import "element-plus/es/components/checkbox/style/css";
 import "element-plus/es/components/col/style/css";
 import "element-plus/es/components/container/style/css";
+import "element-plus/es/components/config-provider/style/css";
 import "element-plus/es/components/date-picker/style/css";
 import "element-plus/es/components/descriptions/style/css";
 import "element-plus/es/components/descriptions-item/style/css";
@@ -38,6 +42,7 @@ import "element-plus/es/components/main/style/css";
 import "element-plus/es/components/menu/style/css";
 import "element-plus/es/components/menu-item/style/css";
 import "element-plus/es/components/message/style/css";
+import "element-plus/es/components/message-box/style/css";
 import "element-plus/es/components/option/style/css";
 import "element-plus/es/components/pagination/style/css";
 import "element-plus/es/components/progress/style/css";
@@ -52,8 +57,10 @@ import "element-plus/es/components/tag/style/css";
 const components = [
   ElAside,
   ElButton,
+  ElCheckbox,
   ElCol,
   ElContainer,
+  ElConfigProvider,
   ElDatePicker,
   ElDescriptions,
   ElDescriptionsItem,

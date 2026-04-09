@@ -12,10 +12,12 @@ const statusMetaMap = {
   "已生效": { label: "已生效", type: "success" },
   "已归档": { label: "已归档", type: "success" },
   "已确认": { label: "已确认", type: "success" },
+  "已审批": { label: "已审批", type: "success" },
   "待审核": { label: "待审核", type: "warning" },
   "待教师确认": { label: "待教师确认", type: "warning" },
   "待学院复核": { label: "待学院复核", type: "warning" },
   "待学院审批": { label: "待学院审批", type: "warning" },
+  "待审批": { label: "待审批", type: "warning" },
   "教师审核中": { label: "教师审核中", type: "warning" },
   "学院审核中": { label: "学院审核中", type: "warning" },
   "待确认": { label: "待确认", type: "warning" },
@@ -24,6 +26,7 @@ const statusMetaMap = {
   "教师退回": { label: "教师退回", type: "danger" },
   "学院退回": { label: "学院退回", type: "danger" },
   "已驳回": { label: "已驳回", type: "danger" },
+  "已退回": { label: "已退回", type: "danger" },
   "驳回": { label: "驳回", type: "danger" },
 };
 
@@ -57,3 +60,4 @@ export function getMessageTypeMeta(type) {
   }
   return messageTypeMetaMap[type] || { label: type, type: "info" };
 }
+

@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from "vue-router";
 
-const LoginView = () => import("../views/LoginView.vue");
+const LoginView = () => import("../views/LoginViewCenter.vue");
 const StudentPortalView = () => import("../views/StudentPortalView.vue");
 const TeacherPortalView = () => import("../views/TeacherPortalView.vue");
 const CollegePortalView = () => import("../views/CollegePortalView.vue");

@@ -855,8 +855,8 @@ public class PhaseOneService {
         entity.setTeacherReviewedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
         if (Boolean.TRUE.equals(request.approved())) {
-            entity.setStatus(FormStatus.ARCHIVED.getLabel());
-            entity.setCollegeReviewedAt(LocalDateTime.now());
+            entity.setStatus(FormStatus.COLLEGE_REVIEWING.getLabel());
+            entity.setCollegeReviewedAt(null);
         } else {
             entity.setStatus(FormStatus.TEACHER_RETURNED.getLabel());
             entity.setCollegeReviewedAt(null);
@@ -869,7 +869,7 @@ public class PhaseOneService {
                 Boolean.TRUE.equals(request.approved()) ? "审核结果" : "退回通知",
                 entity.getTemplateName() + (Boolean.TRUE.equals(request.approved()) ? "已通过教师审核" : "被教师退回"),
                 Optional.ofNullable(request.comment()).orElse("请查看教师审核结果。"),
-                "/student/tasks"
+                "/student/forms"
         );
         if (Boolean.TRUE.equals(request.approved())) {
             UserAccountEntity collegeAdmin = userAccountMapper.selectOne(
@@ -881,9 +881,9 @@ public class PhaseOneService {
             if (collegeAdmin != null) {
                 createMessage(
                         collegeAdmin.getId(),
-                        "归档通知",
-                        student.getName() + " 的 " + entity.getTemplateName() + " 已归档",
-                        "教师审核已完成，表单已直接归档，请查看。",
+                        "待办提醒",
+                        student.getName() + " 的 " + entity.getTemplateName() + " 待学院归档",
+                        "教师审核已完成，请尽快完成学院归档。",
                         "/college/archive"
                 );
             }
@@ -2266,7 +2266,7 @@ public class PhaseOneService {
                             "催办教师",
                             teacher.getUserId(),
                             teacher.getName(),
-                            "/student/tasks",
+                            "/student/forms",
                             student.getName() + " 的 " + form.getTemplateName() + " 等待教师审核",
                             "学生发起催办，请尽快处理待审核材料。",
                             "/teacher/reviews"
@@ -2287,7 +2287,7 @@ public class PhaseOneService {
                             "催办学院",
                             collegeAdmin.getId(),
                             collegeAdmin.getName(),
-                            "/student/tasks",
+                            "/student/forms",
                             student.getName() + " 的 " + form.getTemplateName() + " 等待学院归档",
                             "学生发起催办，请尽快完成学院终审与归档。",
                             "/college/archive"
@@ -2308,7 +2308,7 @@ public class PhaseOneService {
                             "",
                             null,
                             "",
-                            "/student/tasks",
+                            "/student/forms",
                             "",
                             "",
                             ""
@@ -2374,7 +2374,7 @@ public class PhaseOneService {
                             "/teacher/reviews",
                             form.getTemplateName() + " 已被催办修改",
                             "指导教师提醒你尽快修改退回材料并重新提交。",
-                            "/student/tasks"
+                            "/student/forms"
                     ));
                 }
             }
@@ -2533,7 +2533,7 @@ public class PhaseOneService {
                             "/college/archive",
                             form.getTemplateName() + " 已被学院催办修改",
                             "学院管理员提醒你尽快修改退回材料并重新提交。",
-                            "/student/tasks"
+                            "/student/forms"
                     ));
                 }
             }
@@ -3004,9 +3004,9 @@ public class PhaseOneService {
         createMessage(
                 requireUser(student.getUserId()).getId(),
                 Boolean.TRUE.equals(approved) ? "审核结果" : "退回通知",
-                Boolean.TRUE.equals(approved) ? "审批结果" : "退回通知",
                 entity.getTemplateName() + (Boolean.TRUE.equals(approved) ? "已归档" : "被学院退回"),
-                "/student/tasks"
+                Optional.ofNullable(comment).filter(item -> !item.isBlank()).orElse(entity.getTemplateName() + (Boolean.TRUE.equals(approved) ? "已完成学院归档。" : "已被学院退回，请按意见修改。")),
+                "/student/forms"
         );
     }
 

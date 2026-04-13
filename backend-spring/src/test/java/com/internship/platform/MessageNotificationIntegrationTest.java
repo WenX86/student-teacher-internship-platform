@@ -175,6 +175,7 @@ class MessageNotificationIntegrationTest {
         String collegeToken = login("college01", "123456");
 
         makeMentorEffectiveForStudent002();
+        approveInternshipApplicationForStudent002();
         int initialTeacherReviewReminderCount = countMessagesByLink(listMessages(teacherToken), "/teacher/reviews");
         int initialCollegeArchiveReminderCount = countMessagesByLink(listMessages(collegeToken), "/college/archive");
 
@@ -214,7 +215,7 @@ class MessageNotificationIntegrationTest {
         JsonNode studentReturnedMessage = findMessageByTitle(listMessages(studentToken), "值守记录被教师退回");
         assertThat(studentReturnedMessage.path("type").asText()).isEqualTo("退回通知");
         assertThat(studentReturnedMessage.path("content").asText()).contains("请补充晚点名情况");
-        assertThat(studentReturnedMessage.path("link").asText()).isEqualTo("/student/tasks");
+        assertThat(studentReturnedMessage.path("link").asText()).isEqualTo("/student/forms");
 
         mockMvc.perform(put("/api/forms/{id}", "form-003")
                         .header("Authorization", bearer(studentToken))
@@ -268,7 +269,7 @@ class MessageNotificationIntegrationTest {
 
         JsonNode studentArchivedMessage = findMessageByTitle(listMessages(studentToken), "值守记录已归档");
         assertThat(studentArchivedMessage.path("type").asText()).isEqualTo("审核结果");
-        assertThat(studentArchivedMessage.path("link").asText()).isEqualTo("/student/tasks");
+        assertThat(studentArchivedMessage.path("link").asText()).isEqualTo("/student/forms");
     }
 
     @Test
@@ -372,6 +373,29 @@ class MessageNotificationIntegrationTest {
                                     """))
                     .andExpect(status().isOk());
         }
+    }
+
+    private void approveInternshipApplicationForStudent002() throws Exception {
+        String collegeToken = login("college01", "123456");
+
+        JsonNode application = findById(listInternshipApplications(collegeToken), "internship-app-002");
+        if ("已通过".equals(application.path("status").asText())) {
+            return;
+        }
+
+        mockMvc.perform(post("/api/internship-applications/{id}/review", "internship-app-002")
+                        .header("Authorization", bearer(collegeToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "approved": true,
+                                  "organizationConfirmation": "已确认接收",
+                                  "organizationFeedback": "同意安排班主任实习",
+                                  "receivedAt": "2026-03-18",
+                                  "comment": "审核通过"
+                                }
+                                """))
+                .andExpect(status().isOk());
     }
 
     @Test

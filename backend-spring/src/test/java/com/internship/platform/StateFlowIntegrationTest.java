@@ -125,7 +125,6 @@ class StateFlowIntegrationTest {
                 .andExpect(status().isBadRequest());
 
         makeMentorEffectiveForStudent002();
-        approveInternshipApplicationForStudent002();
 
         mockMvc.perform(post("/api/internship-applications/{id}/review", "internship-app-002")
                         .header("Authorization", bearer(collegeToken))
@@ -215,9 +214,9 @@ class StateFlowIntegrationTest {
                                 """))
                 .andExpect(status().isOk());
 
-        JsonNode archivedForm = findById(listForms(studentToken), "form-003");
-        assertThat(archivedForm.path("status").asText()).isEqualTo(FormStatus.ARCHIVED.getLabel());
-        assertThat(archivedForm.path("teacherReviewedAt").asText()).isNotBlank();
+        JsonNode collegeReviewingForm = findById(listForms(studentToken), "form-003");
+        assertThat(collegeReviewingForm.path("status").asText()).isEqualTo(FormStatus.COLLEGE_REVIEWING.getLabel());
+        assertThat(collegeReviewingForm.path("teacherReviewedAt").asText()).isNotBlank();
 
         mockMvc.perform(post("/api/forms/{id}/teacher-review", "form-003")
                         .header("Authorization", bearer(teacherToken))
@@ -390,7 +389,6 @@ class StateFlowIntegrationTest {
         String collegeToken = login("college01", "123456");
 
         makeMentorEffectiveForStudent002();
-        approveInternshipApplicationForStudent002();
 
         mockMvc.perform(post("/api/internship-applications/{id}/review", "internship-app-002")
                         .header("Authorization", bearer(collegeToken))
@@ -689,6 +687,18 @@ class StateFlowIntegrationTest {
                                   "approved": true,
                                   "score": 91,
                                   "comment": "教师审核通过"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/forms/{id}/college-review", "form-003")
+                        .header("Authorization", bearer(collegeToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "approved": true,
+                                  "score": 93,
+                                  "comment": "学院归档通过"
                                 }
                                 """))
                 .andExpect(status().isOk());

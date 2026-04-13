@@ -1,5 +1,6 @@
 com\internship\platform\BatchImportIntegrationTest.class
 com\internship\platform\SystemSettingsIntegrationTest.class
 com\internship\platform\CollegeAdminAccountIntegrationTest.class
+com\internship\platform\UtilityUnitTest.class
 com\internship\platform\MessageNotificationIntegrationTest.class
 com\internship\platform\StateFlowIntegrationTest.class

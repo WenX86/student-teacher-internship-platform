@@ -180,7 +180,6 @@ onMounted(syncCurrentUser);
   <el-container style="min-height: 100vh">
     <el-aside width="240px" style="background: linear-gradient(180deg, #134e4a 0%, #0f172a 100%); color: white">
       <div style="padding: 28px 22px 18px; border-bottom: 1px solid rgba(255,255,255,0.1)">
-        <div style="font-size: 12px; opacity: 0.8">一期建设</div>
         <div style="font-size: 20px; font-weight: 700; margin-top: 6px">师范生教育实习全过程管理平台</div>
         <div style="font-size: 13px; margin-top: 8px; opacity: 0.75">{{ roleLabel }}</div>
       </div>
@@ -215,7 +214,7 @@ onMounted(syncCurrentUser);
           <el-badge v-if="messageStore.unreadCount > 0" :value="messageBadgeValue" :max="99" type="danger">
             <el-tag type="warning">消息提醒</el-tag>
           </el-badge>
-          <el-tag type="success">一期主链已打通</el-tag>
+          <el-tag type="success">系统运行中</el-tag>
           <el-button plain @click="openChangePasswordDialog">修改密码</el-button>
           <el-button plain @click="handleLogout">退出登录</el-button>
         </div>

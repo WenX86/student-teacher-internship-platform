@@ -1,11 +1,14 @@
-﻿param(
+param(
     [switch]$NoPause
 )
 
 $ErrorActionPreference = "Stop"
 
 $root = $PSScriptRoot
-$stateFile = Join-Path $root "logs\start-all.state.json"
+$stateFiles = @(
+    (Join-Path $root "logs\start-all.state.json"),
+    (Join-Path $root "logs\start-mysql.state.json")
+)
 $backendStopScript = Join-Path $root "backend-spring\stop-dev.ps1"
 
 function Stop-PidTree {
@@ -22,8 +25,36 @@ function Stop-PidTree {
     }
 }
 
-if (-not (Test-Path $stateFile)) {
-    Write-Host "No start-all.state.json found. Nothing to stop."
+function Read-State {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path $Path)) {
+        return $null
+    }
+
+    try {
+        return Get-Content $Path -Raw | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
+$states = @()
+foreach ($path in $stateFiles) {
+    $state = Read-State -Path $path
+    if ($state) {
+        $states += [pscustomobject]@{
+            Path = $path
+            State = $state
+        }
+    }
+}
+
+if (-not $states.Count) {
+    Write-Host "No start-all.state.json or start-mysql.state.json found. Nothing to stop."
     if (-not $NoPause) {
         Write-Host "Press any key to close this window."
         $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
@@ -31,9 +62,10 @@ if (-not (Test-Path $stateFile)) {
     exit 0
 }
 
-$state = Get-Content $stateFile -Raw | ConvertFrom-Json
 $backendStopped = $false
 $frontendStopped = $false
+$stoppedBackendPids = New-Object System.Collections.Generic.HashSet[int]
+$stoppedFrontendPids = New-Object System.Collections.Generic.HashSet[int]
 
 if (Test-Path $backendStopScript) {
     try {
@@ -44,26 +76,45 @@ if (Test-Path $backendStopScript) {
     }
 }
 
-if (-not $backendStopped -and $state.backendPid) {
-    $backendStopped = Stop-PidTree -ProcessId ([int]$state.backendPid)
+if (-not $backendStopped) {
+    foreach ($item in $states) {
+        $state = $item.State
+        foreach ($pidProperty in @("backendPid", "backendLauncherPid")) {
+            $pid = $state.$pidProperty
+            if ($pid) {
+                $pidInt = [int]$pid
+                if ($stoppedBackendPids.Add($pidInt)) {
+                    if (Stop-PidTree -ProcessId $pidInt) {
+                        $backendStopped = $true
+                    }
+                }
+            }
+        }
+    }
 }
 
-if (-not $backendStopped -and $state.backendLauncherPid) {
-    $backendStopped = Stop-PidTree -ProcessId ([int]$state.backendLauncherPid)
+foreach ($item in $states) {
+    $state = $item.State
+    if ($state.frontendPid) {
+        $pidInt = [int]$state.frontendPid
+        if ($stoppedFrontendPids.Add($pidInt)) {
+            if (Stop-PidTree -ProcessId $pidInt) {
+                $frontendStopped = $true
+            }
+        }
+    }
 }
 
-if ($state.frontendPid) {
-    $frontendStopped = Stop-PidTree -ProcessId ([int]$state.frontendPid)
+foreach ($path in $stateFiles) {
+    Remove-Item $path -ErrorAction SilentlyContinue
 }
-
-Remove-Item $stateFile -ErrorAction SilentlyContinue
 
 Write-Host "Stop result:"
 Write-Host ("Backend stopped: {0}" -f $backendStopped)
 Write-Host ("Frontend stopped: {0}" -f $frontendStopped)
+Write-Host ("State files checked: {0}" -f (($stateFiles | ForEach-Object { Split-Path $_ -Leaf }) -join ", "))
 
 if (-not $NoPause) {
     Write-Host "Press any key to close this window."
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
-

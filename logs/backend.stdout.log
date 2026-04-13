@@ -1,7 +1,0 @@
-Using backend source: D:\CFile\师范生实习记录平台\backend-spring
-Using ASCII junction : C:\Users\32468\AppData\Local\Temp\internship-platform-backend-spring
-Running command      : mvn spring-boot:run -DskipTests
-
-Backend: http://localhost:8080
-Backend PID: 31480
-Logs: D:\CFile\师范生实习记录平台\backend-spring\logs

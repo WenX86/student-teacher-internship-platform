@@ -1,0 +1,22 @@
+启动脚本说明
+
+1. start-all.cmd / start-all.ps1
+   - 启动前端 + 后端
+   - 后端使用默认开发版配置，连接测试环境 H2 数据库
+   - 适合日常联调、功能演示和不依赖 MySQL 的快速启动
+
+2. start-mysql.cmd / start-mysql.ps1
+   - 启动前端 + 后端
+   - 后端使用 dev-mysql 配置，连接真实 MySQL 数据库
+   - 会执行 schema-mysql.sql 和 data-mysql.sql，适合本地真实数据库联调
+
+3. stop-all.cmd / stop-all.ps1
+   - 停止 start-all 和 start-mysql 启动的进程
+   - 目前已兼容两种启动方式，统一使用这一组停止脚本即可
+
+
+
+使用建议
+   - 只想快速跑起来测试：用 start-all.cmd
+   - 想连接真实数据库：用 start-mysql.cmd
+   - 不确定当前是哪种方式启动的：直接用 stop-all.cmd

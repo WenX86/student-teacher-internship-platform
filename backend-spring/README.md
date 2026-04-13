@@ -55,6 +55,14 @@ java -jar .\target\internship-platform-backend-0.0.1-SNAPSHOT.jar
 java -jar .\target\internship-platform-backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=dev-mysql
 ```
 
+如果你想从仓库根目录一键启动前后端并连接 MySQL，可直接运行：
+
+```powershell
+.\start-mysql.cmd
+```
+
+说明：`dev-mysql` 会使用 MySQL 初始化脚本加载表结构和演示数据，适合本地联调和真实 MySQL 运行验证。
+
 ## 演示账号
 默认密码均为 `123456`：
 
